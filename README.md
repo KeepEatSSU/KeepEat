@@ -35,7 +35,7 @@ git switch BE
 보안을 위해 `.env` 파일은 레포지토리에 포함하지 않으며, 로컬 환경에서 직접 생성해야 합니다.
 
 ### 4-1. .env 파일 생성
-프로젝트 루트 경로(docker-compose.yml이 위치한 경로)에 `.env` 파일을 생성하고 자세한 내용은 Discord의 자료 공유방을 참조하세요.
+프로젝트 루트 경로(docker-compose.yml이 위치한 경로)에 `.env` 파일을 생성하고 자세한 내용은 Discord의 자료 공유방을 올려뒀습니다.
 (주의: 해당 파일은 .gitignore에 등록되어 있으므로 강제로 git add 하지 마세요.)
 
 ### 4-2. Docker 컨테이너 실행

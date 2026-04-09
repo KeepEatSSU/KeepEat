@@ -39,3 +39,10 @@ out/
 ### Spring Boot 환경설정 ###
 application-local.yml
 application-prod.yml
+
+### 프로젝트 문서 (비공개) ###
+docs/
+CLAUDE.md
+AGENTS.md
+.claude/
+data.sql

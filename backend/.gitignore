@@ -39,3 +39,6 @@ out/
 ### Spring Boot 환경설정 ###
 application-local.yml
 application-prod.yml
+
+### JWT security ### 지금은 패스
+# .env

@@ -32,13 +32,9 @@ public class Ingredient {
     @Column(nullable = false)
     private String name;
 
-    @Column(name = "name_subtitle")
-    private String nameSubtitle;
-
     @Builder
-    public Ingredient(Category category, String name, String nameSubtitle) {
+    public Ingredient(Category category, String name) {
         this.category = category;
         this.name = name;
-        this.nameSubtitle = nameSubtitle;
     }
 }

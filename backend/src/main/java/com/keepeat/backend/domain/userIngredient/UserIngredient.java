@@ -53,9 +53,13 @@ public class UserIngredient {
 
     private String unit;
 
+    @Column(name = "custom_name")
+    private String customName;
+
     @Builder
     public UserIngredient(Long userId, Ingredient ingredient, StorageType storageType,
-                          LocalDate purchaseDate, LocalDate expiryDate, Double quantity, String unit) {
+                          LocalDate purchaseDate, LocalDate expiryDate, Double quantity, String unit,
+                          String customName) {
         this.userId = userId;
         this.ingredient = ingredient;
         this.storageType = storageType;
@@ -63,6 +67,7 @@ public class UserIngredient {
         this.expiryDate = expiryDate;
         this.quantity = quantity;
         this.unit = unit;
+        this.customName = customName;
     }
 
     public void update(UserIngredientRequest request) {
@@ -71,5 +76,6 @@ public class UserIngredient {
         if (request.unit() != null) this.unit = request.unit();
         if (request.expiryDate() != null) this.expiryDate = request.expiryDate();
         if (request.purchaseDate() != null) this.purchaseDate = request.purchaseDate();
+        if (request.customName() != null) this.customName = request.customName();
     }
 }

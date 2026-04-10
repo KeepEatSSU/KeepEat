@@ -8,7 +8,7 @@ import java.time.LocalDate;
 public record UserIngredientResponse(
         Long id,
         String name,
-        String nameSubtitle,
+        String customName,
         StorageType storageType,
         Double quantity,
         String unit,
@@ -20,7 +20,7 @@ public record UserIngredientResponse(
         return new UserIngredientResponse(
                 ui.getId(),
                 ui.getIngredient().getName(),
-                ui.getIngredient().getNameSubtitle(),
+                ui.getCustomName(),
                 ui.getStorageType(),
                 ui.getQuantity(),
                 ui.getUnit(),

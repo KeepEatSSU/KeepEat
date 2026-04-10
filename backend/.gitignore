@@ -40,5 +40,14 @@ out/
 application-local.yml
 application-prod.yml
 
+<<<<<<< HEAD
 ### JWT security ### 지금은 패스
 # .env
+=======
+### 프로젝트 문서 (비공개) ###
+docs/
+CLAUDE.md
+AGENTS.md
+.claude/
+data.sql
+>>>>>>> 6abf1dea7be6d0e4a0c24db5cb2b664f40d89413

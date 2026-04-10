@@ -45,10 +45,11 @@ public class RecipeService {
                         
                         2. 조리 디테일 (Quality Control)
                         음식의 완성도: 단순 혼합이 아닌, 식재료의 특성을 살린 조리법을 적용한 실제 레시피여야 함.
-                        상세 가이드: `instructions`는 반드시 5단계 이상으로 구성.
+                        상세 가이드: `instructions`는 반드시 5단계 이상으로 구성하며, 각 단계의 시작은 항상 숫자와 마침표로 시작하세요 (예: "1. 팬을 달구고...", "2. 고기를 볶아줍니다.").
                         필수 정보: 단계별로 정확한 불 세기(강/중/약불), 조리 시간(분/초), 투입하는 양념의 양을 반드시 명시할 것.
-                        계량 및 속성 필수: requiredIngredients 배열은 반드시 재료명(name), 계량 수치(amount), 추가구매 여부(isAdditional)를 속성으로 갖는 객체 리스트로 구성하세요. 보유 리스트에 없는 재료만 isAdditional을 true로 설정하고, name 필드에 "(추가 구매)" 같은 텍스트를 절대 직접 적지 마세요. (예: [{"name": "생삼겹살", "amount": "150g", "isAdditional": false}])
+                        계량 및 속성 필수: requiredIngredients 배열은 재료명(name)과 계량 수치(amount)만을 속성으로 갖는 객체 리스트로 구성하세요. (예: [{"name": "생삼겹살", "amount": "150g"}]) 추가로 구매해야 하는 식재료가 포함되어도 절대 "(추가 구매)"와 같은 별도의 표시나 마킹을 하지 말고 평범한 재료명만 적으세요.
                         다양성: 5개 레시피의 `cookingMethod`는 중복되지 않게 골고루 배분할 것.
+                        추가 정보: 각 레시피의 예상 칼로리를 계산하여 `calories` 필드에 숫자(kcal 단위)로 제공하세요.
                         """)
                 .build();
     }
@@ -91,13 +92,14 @@ public class RecipeService {
                     .recipeName(requestRecipe.recipeName())
                     .cookingMethod(requestRecipe.cookingMethod())
                     .cookingTime(requestRecipe.cookingTime())
+                    .calories(requestRecipe.calories())
                     .difficulty(requestRecipe.difficulty())
                     .instructions(String.join("\n", requestRecipe.instructions()))
                     .createdAt(LocalDate.now())
                     .build();
 
             for(RecipeIngredientDto requestIngredient : requestRecipe.requiredIngredients()){
-                RecipeIngredient recipeIngredient = new RecipeIngredient(requestIngredient.name(), requestIngredient.amount(), recipe, requestIngredient.isAdditional());
+                RecipeIngredient recipeIngredient = new RecipeIngredient(requestIngredient.name(), requestIngredient.amount(), recipe);
                 recipe.getRequiredIngredients().add(recipeIngredient);
             }
             recipeList.add(recipe);

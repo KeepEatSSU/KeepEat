@@ -34,6 +34,9 @@ public class Recipe {
     @Column(nullable = false)
     private String cookingTime;
 
+    @Column(nullable = false)
+    private Integer calories;
+
     @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<RecipeIngredient> requiredIngredients = new ArrayList<>();
 
@@ -44,11 +47,12 @@ public class Recipe {
     private LocalDate createdAt;
 
     @Builder
-    public Recipe(String recipeName, Difficulty difficulty, CookingMethod cookingMethod, String cookingTime, String instructions, LocalDate createdAt){
+    public Recipe(String recipeName, Difficulty difficulty, CookingMethod cookingMethod, String cookingTime, Integer calories, String instructions, LocalDate createdAt){
         this.recipeName = recipeName;
         this.difficulty = difficulty;
         this.cookingMethod = cookingMethod;
         this.cookingTime = cookingTime;
+        this.calories = calories;
         this.instructions = instructions;
         this.createdAt = createdAt;
     }

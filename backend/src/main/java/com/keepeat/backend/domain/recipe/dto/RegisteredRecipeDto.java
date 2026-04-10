@@ -22,6 +22,9 @@ public record RegisteredRecipeDto(
         @NotBlank(message = "조리시간이 누락되었습니다.")
         String cookingTime,
 
+        @NotNull(message = "칼로리가 누락되었습니다.")
+        Integer calories,
+
         @NotEmpty(message = "레시피에 필요한 재료가 누락되었습니다.")
         List<RecipeIngredientDto> requiredIngredients,
 

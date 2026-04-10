@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.recipe;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
@@ -23,13 +24,12 @@ public class RecipeIngredient {
     @JoinColumn(name = "recipe_id")
     private Recipe recipe;
 
-    @Column(nullable = false)
-    private boolean isAdditional;
 
-    public RecipeIngredient(String name, String amount, Recipe recipe, boolean isAdditional) {
+    @Builder
+    public RecipeIngredient(String name, String amount, Recipe recipe) {
         this.name = name;
         this.amount = amount;
         this.recipe = recipe;
-        this.isAdditional = isAdditional;
+
     }
 }

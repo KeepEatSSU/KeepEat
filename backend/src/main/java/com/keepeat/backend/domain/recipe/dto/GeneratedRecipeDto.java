@@ -10,6 +10,7 @@ public record GeneratedRecipeDto(
         Difficulty difficulty,
         CookingMethod cookingMethod,
         String cookingTime,
+        Integer calories,
         List<RecipeIngredientDto> requiredIngredients,
         List<String> instructions
 ){

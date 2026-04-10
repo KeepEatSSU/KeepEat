@@ -9,6 +9,7 @@ public record UserIngredientRequest(
         Double quantity,
         String unit,
         LocalDate expiryDate,
-        LocalDate purchaseDate
+        LocalDate purchaseDate,
+        String customName
 ) {
 }

@@ -4,6 +4,7 @@ import com.keepeat.backend.domain.common.enums.CookingMethod;
 import com.keepeat.backend.domain.common.enums.Difficulty;
 import lombok.Builder;
 
+import java.time.LocalDate;
 import java.util.List;
 
 @Builder
@@ -15,5 +16,6 @@ public record RecipeDetailResponseDto(
         String cookingTime,
         Integer calories,
         List<RecipeIngredientDto> requiredIngredients,
-        List<String> instructions
+        List<String> instructions,
+        LocalDate createdAt
 ) { }

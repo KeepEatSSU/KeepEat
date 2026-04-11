@@ -212,7 +212,7 @@ public class RecipeService {
                     recipe.getCookingMethod(),
                     recipe.getCookingTime(),
                     recipe.getCalories(),
-                    recipe.getCreatedAt())
+                    userRecipe.getCreatedAt())
             );
         }
         return new MyRecipesResponseDto(myRecipes);
@@ -224,8 +224,8 @@ public class RecipeService {
     @Transactional(readOnly = true)
     public RecipeDetailResponseDto getDetailOfMyRecipe(Long userId, Long recipeId){
 
-        if(!userRecipeRepository.existsByUserIdAndRecipeId(userId, recipeId))
-            throw new RuntimeException("당신에게 그런 레시피는 없어용. ㄲㅈ셈");
+        UserRecipe userRecipe = userRecipeRepository.findByUserIdAndRecipeId(userId, recipeId)
+                .orElseThrow(() -> new RuntimeException("당신에게 그런 레시피 없어용. ㄲㅈ셈"));
 
         Recipe recipe = recipeRepository.findByIdWithIngredient(recipeId)
                 .orElseThrow(() -> new RuntimeException("해당레시피 찾을 수 없으셈. ㄲㅈ셈"));
@@ -251,6 +251,7 @@ public class RecipeService {
                 .calories(recipe.getCalories())
                 .instructions(instructionList)
                 .requiredIngredients(recipeIngredientList)
+                .createdAt(userRecipe.getCreatedAt())
                 .build();
 
         return response;

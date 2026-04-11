@@ -25,7 +25,7 @@ public class GlobalExceptionHandler {
                 "message", code.getMessage()
         ));
     }
-
+  
     @ExceptionHandler(IllegalArgumentException.class)
     public ResponseEntity<Map<String, String>> handleIllegalArgumentException(IllegalArgumentException e) {
         Map<String, String> errorResponse = new HashMap<>();

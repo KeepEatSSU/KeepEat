@@ -1,7 +1,6 @@
-package com.keepeat.backend.user.dto;
+package com.keepeat.backend.domain.user.dto;
 
 import lombok.Getter;
-import org.jspecify.annotations.Nullable;
 
 @Getter
 public class SignUpRequest {

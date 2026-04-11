@@ -1,4 +1,4 @@
-package com.keepeat.backend.user.entity;
+package com.keepeat.backend.domain.user.entity;
 
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -23,6 +23,19 @@ public class AppUser {
     @Enumerated(EnumType.STRING) // Enum 이름을 DB에 문자열로 저장
     @Column(nullable = false)
     private Role role;
+
+    @Column(length = 512)
+    private String refreshToken;
+
+    // 토큰 갱신을 위한 메서드
+    public void updateRefreshToken(String refreshToken) {
+        this.refreshToken = refreshToken;
+    }
+
+    // 로그아웃을 위한 메서드
+    public void clearRefreshToken() {
+        this.refreshToken = null;
+    }
 
     // 회원을 처음 생성할 때 사용할 생성자
     public AppUser(String email, String password, Role role) {

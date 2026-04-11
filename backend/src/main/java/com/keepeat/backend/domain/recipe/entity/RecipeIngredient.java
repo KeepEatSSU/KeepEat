@@ -1,4 +1,4 @@
-package com.keepeat.backend.domain.recipe;
+package com.keepeat.backend.domain.recipe.entity;
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -8,6 +8,7 @@ import lombok.NoArgsConstructor;
 
 @Entity
 @Getter
+@Table(name = "recipe_ingredient")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class RecipeIngredient {
     @Id

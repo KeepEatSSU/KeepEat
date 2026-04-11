@@ -1,4 +1,4 @@
-package com.keepeat.backend.domain.recipe;
+package com.keepeat.backend.domain.recipe.entity;
 
 import com.keepeat.backend.domain.common.enums.CookingMethod;
 import com.keepeat.backend.domain.common.enums.Difficulty;
@@ -14,6 +14,7 @@ import java.util.List;
 
 @Entity
 @Getter
+@Table(name = "recipe")
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Recipe {
     @Id

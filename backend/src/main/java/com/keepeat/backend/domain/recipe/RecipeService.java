@@ -50,7 +50,7 @@ public class RecipeService {
                         제공된 보유 식재료와 조미료 리스트를 바탕으로 총 5개의 레시피를 제안하세요.
                         
                         1. 레시피 구성 및 우선순위
-                        레시피 1~3 (Zero Waste): 오직 보유 재료와 조미료만 사용.
+                        레시피 1~3 (Zero Waste): 오직 보유 재료와 조미료만 사용.절대로, 단 1개의 새로운 식재료나 조미료도 추가해서는 안 됩니다.
                         레시피 4~5 (Level Up): 보유 재료를 베이스로 하되, 식재료 또는 조미료 1~3개를 추가 구매하여 요리의 질을 높임.
                         최우선 순위: `days_left`가 짧은 재료를 우선적으로 활용하되, 자연스러운 조합이 아닌 경우 다른 레시피에 나누어 배치하세요.
                         핵심 재료 체크: 요리 제목에 들어가는 주재료(밥, 면, 고기 등)가 없을 경우 1~3번에서 제외하거나, 보유한 재료로 대체 가능한 제목으로 수정할 것.
@@ -190,6 +190,10 @@ public class RecipeService {
 
     }
 
+
+    // 이것도 sql delete 실행 원리상 실제 해당 유저와 레시피 id가 매핑되는 데이터가 없어도
+    // 그냥 아무런 에러가 안발생함. 그냥 그런 데이터 없어서 아무것도 안지워진것이 정상 동작
+    // 그래서 그 유저 id와 레시피 id가 실제로 user_recipe에 있는지 확인하려면 그 로직 필요함.
     @Transactional
     public void deleteMyRecipes(Long userId, List<Long> recipeIds){
         userRecipeRepository.deleteAllByUserIdAndRecipeIds(userId, recipeIds);
@@ -250,6 +254,7 @@ public class RecipeService {
                 .cookingTime(recipe.getCookingTime())
                 .calories(recipe.getCalories())
                 .instructions(instructionList)
+                .cookingMethod(recipe.getCookingMethod())
                 .requiredIngredients(recipeIngredientList)
                 .createdAt(userRecipe.getCreatedAt())
                 .build();

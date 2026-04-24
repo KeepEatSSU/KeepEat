@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Service
@@ -143,14 +144,9 @@ public class RecipeService {
     }
 
 
-    // 레시피 DB 뿐만 아니라 사용자 식별해서 해당 사용자랑 매칭 시켜주는 로직도 필요함.
-    // 추후에 USER 엔티티 받으면 Recipe_User 테이블 만들어서 거기에 저장하는 로직도 추가해야함.
-    // 그리고 이건 그 실제로 레시피 DB에 레시피를 저장하는 로직임.
-    // 그래서 사용자가 내 레시피에 등록하고 해제하는 로직은 따로 만들어야 할 듯.
-    // 이거는 사용자가 레시피 추천 기능에서 내 레시피에 등록하는 레시피를 DB에 저장할 때 사용하는 로직임.
+
     @Transactional
     public void saveRecipes(RegisteredRecipesRequestDto requestRecipes, Long userId){
-
 
         List<Recipe> recipeList = new ArrayList<>();
 
@@ -239,9 +235,7 @@ public class RecipeService {
         return new MyRecipesResponseDto(myRecipes);
     }
 
-    // 예외처리 필요
-    // 사용자 보유 재료와 레시피 재료 비교해서 나눠서 주는 로직 추가 필요
-    // 지금은 ingredient 테이블의 ID와 연결하지 않아서 아직 로직 추가 안했음.
+
     @Transactional(readOnly = true)
     public RecipeDetailResponseDto getDetailOfMyRecipe(Long userId, Long recipeId){
 
@@ -256,10 +250,16 @@ public class RecipeService {
                 ? new ArrayList<>()
                 : Arrays.asList(recipe.getInstructions().split("\n"));
 
+        List<UserIngredient> userIngredients = userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId);
 
-        List<RecipeIngredientDto> recipeIngredientList = new ArrayList<>();
+        Set<String> userIngredientSet = userIngredients.stream()
+                .map(ingredient -> ingredient.getIngredient().getName())
+                .collect(Collectors.toSet());
+
+        List<RecipeIngredientDetailDto> recipeIngredientList = new ArrayList<>();
         for(RecipeIngredient ingredient : recipe.getRequiredIngredients()){
-            recipeIngredientList.add(new RecipeIngredientDto(ingredient.getName(), ingredient.getAmount()));
+            boolean isOwned = userIngredientSet.contains(ingredient.getName());
+            recipeIngredientList.add(new RecipeIngredientDetailDto(ingredient.getName(), ingredient.getAmount(), isOwned));
         }
 
 
@@ -283,7 +283,5 @@ public class RecipeService {
         if (expiryDate == null) return 999L;
         return ChronoUnit.DAYS.between(LocalDate.now(), expiryDate);
     }
-
-
 
 }

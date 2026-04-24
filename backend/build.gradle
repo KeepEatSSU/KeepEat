@@ -44,6 +44,7 @@ dependencies {
 	// === AI API 관련 ===
 	implementation platform('org.springframework.ai:spring-ai-bom:1.1.4')
 	implementation 'org.springframework.ai:spring-ai-starter-model-google-genai'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux' // Open AI API
 
     // ===  테스트 관련  ===
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
@@ -55,7 +56,6 @@ dependencies {
     testCompileOnly 'org.projectlombok:lombok'
     testAnnotationProcessor 'org.projectlombok:lombok'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-
 }
 
 tasks.named('test') {

@@ -1,6 +1,6 @@
-package com.keepeat.backend.domain.ingredient;
+package com.keepeat.backend.domain.subcategory;
 
-import com.keepeat.backend.domain.subcategory.SubCategory;
+import com.keepeat.backend.domain.category.Category;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -16,25 +16,25 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 @Entity
-@Table(name = "ingredient")
+@Table(name = "sub_category")
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
-public class Ingredient {
+public class SubCategory {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "sub_category_id", nullable = false)
-    private SubCategory subCategory;
+    @JoinColumn(name = "category_id", nullable = false)
+    private Category category;
 
     @Column(nullable = false)
     private String name;
 
     @Builder
-    public Ingredient(SubCategory subCategory, String name) {
-        this.subCategory = subCategory;
+    public SubCategory(Category category, String name) {
+        this.category = category;
         this.name = name;
     }
 }

@@ -1,7 +1,7 @@
 package com.keepeat.backend.domain.recipe.repository;
 
 import com.keepeat.backend.domain.recipe.entity.UserRecipe;
-import com.keepeat.backend.domain.userIngredient.UserIngredient;
+import com.keepeat.backend.domain.useringredient.UserIngredient;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;

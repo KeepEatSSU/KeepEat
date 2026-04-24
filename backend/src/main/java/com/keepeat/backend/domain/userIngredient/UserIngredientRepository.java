@@ -25,5 +25,7 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
             @Param("q") String q
     );
 
+
+
     Optional<UserIngredient> findByIdAndUserId(Long id, Long userId);
 }

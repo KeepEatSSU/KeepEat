@@ -1,0 +1,60 @@
+package com.keepeat.backend.domain.recipe.entity;
+
+import com.keepeat.backend.domain.common.enums.CookingMethod;
+import com.keepeat.backend.domain.common.enums.Difficulty;
+import jakarta.persistence.*;
+import lombok.AccessLevel;
+import lombok.Builder;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Getter
+@Table(name = "recipe")
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+public class Recipe {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(nullable = false)
+    private String recipeName;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private Difficulty difficulty;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    private CookingMethod cookingMethod;
+
+    @Column(nullable = false)
+    private String cookingTime;
+
+    @Column(nullable = false)
+    private Integer calories;
+
+    @OneToMany(mappedBy = "recipe", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<RecipeIngredient> requiredIngredients = new ArrayList<>();
+
+    @Column(columnDefinition = "TEXT")
+    private String instructions;
+
+    @Column
+    private LocalDate createdAt;
+
+    @Builder
+    public Recipe(String recipeName, Difficulty difficulty, CookingMethod cookingMethod, String cookingTime, Integer calories, String instructions, LocalDate createdAt){
+        this.recipeName = recipeName;
+        this.difficulty = difficulty;
+        this.cookingMethod = cookingMethod;
+        this.cookingTime = cookingTime;
+        this.calories = calories;
+        this.instructions = instructions;
+        this.createdAt = createdAt;
+    }
+}

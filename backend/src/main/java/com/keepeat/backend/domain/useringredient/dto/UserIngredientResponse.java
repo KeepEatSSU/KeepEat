@@ -1,7 +1,7 @@
-package com.keepeat.backend.domain.userIngredient.dto;
+package com.keepeat.backend.domain.useringredient.dto;
 
 import com.keepeat.backend.domain.common.enums.StorageType;
-import com.keepeat.backend.domain.userIngredient.UserIngredient;
+import com.keepeat.backend.domain.useringredient.UserIngredient;
 
 import java.time.LocalDate;
 
@@ -9,6 +9,8 @@ public record UserIngredientResponse(
         Long id,
         String name,
         String customName,
+        String categoryName,
+        String subCategoryName,
         StorageType storageType,
         Double quantity,
         String unit,
@@ -21,6 +23,8 @@ public record UserIngredientResponse(
                 ui.getId(),
                 ui.getIngredient().getName(),
                 ui.getCustomName(),
+                ui.getIngredient().getSubCategory().getCategory().getName(),
+                ui.getIngredient().getSubCategory().getName(),
                 ui.getStorageType(),
                 ui.getQuantity(),
                 ui.getUnit(),

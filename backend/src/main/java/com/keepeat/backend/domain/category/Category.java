@@ -24,12 +24,8 @@ public class Category {
     @Column(nullable = false)
     private String name;
 
-    @Column(name = "sub_name")
-    private String subName;
-
     @Builder
-    public Category(String name, String subName) {
+    public Category(String name) {
         this.name = name;
-        this.subName = subName;
     }
 }

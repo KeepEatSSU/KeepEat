@@ -3,3 +3,8 @@ spring:
     name: backend
   profiles:
     active: local
+
+openai:
+  api-key: ${OPENAI_API_KEY}
+  model: gpt-4o
+  max-tokens: 1024

@@ -40,10 +40,6 @@ out/
 application-local.yml
 application-prod.yml
 
-### Spring Boot 환경설정 ###
-application-local.yml
-application-prod.yml
-
 ### JWT security ### 지금은 패스
 # .env
 
@@ -52,5 +48,5 @@ docs/
 CLAUDE.md
 AGENTS.md
 .claude/
-
 data.sql
+scripts/

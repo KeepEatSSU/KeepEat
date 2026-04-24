@@ -41,6 +41,11 @@ dependencies {
     implementation group: 'org.modelmapper', name: 'modelmapper', version: '2.4.2'
     implementation group: 'jakarta.validation', name: 'jakarta.validation-api', version: '3.1.0'
 
+	// === AI API 관련 ===
+	implementation platform('org.springframework.ai:spring-ai-bom:1.1.4')
+	implementation 'org.springframework.ai:spring-ai-starter-model-google-genai'
+    implementation 'org.springframework.boot:spring-boot-starter-webflux' // Open AI API
+
     // ===  테스트 관련  ===
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test' // 시큐리티 테스트도 주석 해제

@@ -1,4 +1,4 @@
-package com.keepeat.backend.domain.userIngredient.dto;
+package com.keepeat.backend.domain.useringredient.dto;
 
 import com.keepeat.backend.domain.common.enums.StorageType;
 

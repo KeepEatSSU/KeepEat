@@ -1,4 +1,4 @@
-package com.keepeat.backend.domain.userIngredient;
+package com.keepeat.backend.domain.useringredient;
 
 import com.keepeat.backend.domain.common.enums.StorageType;
 import com.keepeat.backend.domain.ingredient.Ingredient;
@@ -18,7 +18,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
-import com.keepeat.backend.domain.userIngredient.dto.UserIngredientRequest;
+import com.keepeat.backend.domain.useringredient.dto.UserIngredientRequest;
 
 import java.time.LocalDate;
 

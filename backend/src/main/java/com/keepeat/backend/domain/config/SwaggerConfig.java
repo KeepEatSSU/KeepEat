@@ -13,24 +13,22 @@ public class SwaggerConfig {
 
     @Bean
     public OpenAPI openAPI() {
-        String jwtSchemeName = "jwtAuth";
 
-        // API 요청 헤더에 인증 정보 포함 설정
+        String jwtSchemeName = "BearerAuth";
+
+        // API 요청 헤더에 토큰을 포함시키도록 설정
         SecurityRequirement securityRequirement = new SecurityRequirement().addList(jwtSchemeName);
 
-        // SecurityScheme 등록 (Bearer Token 설정)
+        // SecuritySchemes 등록
         Components components = new Components()
                 .addSecuritySchemes(jwtSchemeName, new SecurityScheme()
                         .name(jwtSchemeName)
-                        .type(SecurityScheme.Type.HTTP)
+                        .type(SecurityScheme.Type.HTTP) // HTTP 방식
                         .scheme("bearer")
-                        .bearerFormat("JWT"));
+                        .bearerFormat("JWT")); // 토큰 형식을 지정하는 임의의 문자(Optional)
 
         return new OpenAPI()
-                .info(new Info()
-                        .title("KeepEat API Document")
-                        .description("KeepEat 프로젝트 백엔드 API 명세서 및 테스트 환경")
-                        .version("v1.0.0"))
+                .info(new Info().title("KeepEat API 명세서").version("v1").description("KeepEat 백엔드 API 문서"))
                 .addSecurityItem(securityRequirement)
                 .components(components);
     }

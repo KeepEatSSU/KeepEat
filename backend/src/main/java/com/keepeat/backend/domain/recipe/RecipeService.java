@@ -10,6 +10,7 @@ import com.keepeat.backend.domain.recipe.repository.RecipeRepository;
 import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
 import com.keepeat.backend.domain.userIngredient.UserIngredient;
 import com.keepeat.backend.domain.userIngredient.UserIngredientRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
@@ -19,6 +20,7 @@ import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
+@Slf4j
 @Service
 public class RecipeService {
     private final ChatClient chatClient;
@@ -69,12 +71,10 @@ public class RecipeService {
     }
 
 
-    public GeneratedRecipesResponseDto generateRecipes(){
+    public GeneratedRecipesResponseDto generateRecipes(Long userId){
 
         ObjectMapper objectMapper = new ObjectMapper();
 
-        // 유저 식별 로직(추후)
-        Long userId = 1L;
 
         String userIngredientJsonString = "";
 
@@ -99,6 +99,8 @@ public class RecipeService {
         }catch (JsonProcessingException e){
             throw new RuntimeException("프롬프트에 사용할 데이터를 JSON으로 변환하는 중에 에러가 발생했습니다.", e);
         }
+
+        log.info(userIngredientJsonString);
 
 
         // 식재료 까지는 프롬프트에 넣을 수 있게 변환 되었음.

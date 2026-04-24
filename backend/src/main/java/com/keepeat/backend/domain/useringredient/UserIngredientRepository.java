@@ -1,4 +1,4 @@
-package com.keepeat.backend.domain.userIngredient;
+package com.keepeat.backend.domain.useringredient;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -11,12 +11,16 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
 
     @Query("SELECT ui FROM UserIngredient ui " +
             "JOIN FETCH ui.ingredient i " +
+            "JOIN FETCH i.subCategory sc " +
+            "JOIN FETCH sc.category c " +
             "WHERE ui.userId = :userId " +
             "ORDER BY ui.expiryDate ASC NULLS LAST")
     List<UserIngredient> findAllByUserIdOrderByExpiryDate(@Param("userId") Long userId);
 
     @Query("SELECT ui FROM UserIngredient ui " +
             "JOIN FETCH ui.ingredient i " +
+            "JOIN FETCH i.subCategory sc " +
+            "JOIN FETCH sc.category c " +
             "WHERE ui.userId = :userId " +
             "AND i.name LIKE %:q% " +
             "ORDER BY ui.expiryDate ASC NULLS LAST")
@@ -25,7 +29,10 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
             @Param("q") String q
     );
 
-
-
-    Optional<UserIngredient> findByIdAndUserId(Long id, Long userId);
+    @Query("SELECT ui FROM UserIngredient ui " +
+            "JOIN FETCH ui.ingredient i " +
+            "JOIN FETCH i.subCategory sc " +
+            "JOIN FETCH sc.category c " +
+            "WHERE ui.id = :id AND ui.userId = :userId")
+    Optional<UserIngredient> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 }

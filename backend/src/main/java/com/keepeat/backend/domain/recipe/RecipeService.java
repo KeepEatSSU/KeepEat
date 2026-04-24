@@ -8,10 +8,13 @@ import com.keepeat.backend.domain.recipe.entity.RecipeIngredient;
 import com.keepeat.backend.domain.recipe.entity.UserRecipe;
 import com.keepeat.backend.domain.recipe.repository.RecipeRepository;
 import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
+
 import com.keepeat.backend.domain.user.entity.AppUser;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
-import com.keepeat.backend.domain.userIngredient.UserIngredient;
-import com.keepeat.backend.domain.userIngredient.UserIngredientRepository;
+
+import com.keepeat.backend.domain.useringredient.UserIngredient;
+import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.ai.chat.client.ChatClient;

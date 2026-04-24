@@ -2,6 +2,8 @@ package com.keepeat.backend.domain.recipe;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.keepeat.backend.domain.common.exception.ErrorCode;
+import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.recipe.dto.*;
 import com.keepeat.backend.domain.recipe.entity.Recipe;
 import com.keepeat.backend.domain.recipe.entity.RecipeIngredient;
@@ -16,6 +18,7 @@ import com.keepeat.backend.domain.useringredient.UserIngredient;
 import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
@@ -173,11 +176,10 @@ public class RecipeService {
     }
 
 
-    // 추후 예외 처리 필요
-    @Transactional
-    public void addUserRecipeByRecipes(Long userId, List<Recipe> recipes){
+    private void addUserRecipeByRecipes(Long userId, List<Recipe> recipes){
+        AppUser user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.USER_NOT_FOUND));
 
-        AppUser user = appUserRepository.getReferenceById(userId);
         List<UserRecipe> userRecipeList = new ArrayList<>();
 
         for(Recipe recipe : recipes){
@@ -187,14 +189,24 @@ public class RecipeService {
         userRecipeRepository.saveAll(userRecipeList);
     }
 
-    // 추후 예외 처리 필요
+
     // 이거는 추후에 레시피 DB가 쌓이면 사용할 서비스 메서드임
     // 레시피를 직접 검색한 후 내 레시피에 등록할 때 사용하는 메서드임. 미리 만들어둠.
     @Transactional
     public void addUserRecipeByIds(Long userId, List<Long> recipeIds){
-        List<Recipe> recipes = recipeRepository.findAllById(recipeIds);
-        addUserRecipeByRecipes(userId, recipes);
+        List<Long> distinctRecipeIds = recipeIds.stream().distinct().toList();
 
+        List<Recipe> recipes = recipeRepository.findAllById(distinctRecipeIds);
+
+        if(recipes.size() != distinctRecipeIds.size()){
+            throw new KeepEatException(ErrorCode.RECIPE_NOT_FOUND);
+        }
+
+        try {
+            addUserRecipeByRecipes(userId, recipes);
+        }catch (DataIntegrityViolationException e){
+            throw new KeepEatException(ErrorCode.DUPLICATE_RECIPE);
+        }
     }
 
 
@@ -203,17 +215,20 @@ public class RecipeService {
     // 그래서 그 유저 id와 레시피 id가 실제로 user_recipe에 있는지 확인하려면 그 로직 필요함.
     @Transactional
     public void deleteMyRecipes(Long userId, List<Long> recipeIds){
-        long matchingCountForValid = userRecipeRepository.countByAppUserIdAndRecipeIds(userId, recipeIds);
+
+        List<Long> distinctRecipeIds = recipeIds.stream().distinct().toList();
+
+        long matchingCountForValid = userRecipeRepository.countByAppUserIdAndRecipeIds(userId, distinctRecipeIds);
 
         if(matchingCountForValid != recipeIds.size()){
-            throw new IllegalArgumentException("삭제 요청한 레시피 중 일부가 존재하지 않거나 본인의 레시피가 아님 ㄲㅈ 셈");
+            throw new KeepEatException(ErrorCode.USER_RECIPE_ACCESS_DENIED);
         }
 
         userRecipeRepository.deleteAllByAppUserIdAndRecipeIds(userId, recipeIds);
     }
 
 
-    //또한 예외 처리 필요함.
+
     @Transactional(readOnly = true)
     public MyRecipesResponseDto getMyRecipesByUserId(Long userId){
         List<UserRecipe> userRecipes = userRecipeRepository.findAllByUserId(userId);
@@ -239,11 +254,11 @@ public class RecipeService {
     @Transactional(readOnly = true)
     public RecipeDetailResponseDto getDetailOfMyRecipe(Long userId, Long recipeId){
 
-        UserRecipe userRecipe = userRecipeRepository.findByAppUserIdAndRecipeId(userId, recipeId)
-                .orElseThrow(() -> new RuntimeException("당신에게 그런 레시피 없어용. ㄲㅈ셈"));
-
         Recipe recipe = recipeRepository.findByIdWithIngredient(recipeId)
-                .orElseThrow(() -> new RuntimeException("해당레시피 찾을 수 없으셈. ㄲㅈ셈"));
+                .orElseThrow(() -> new KeepEatException(ErrorCode.RECIPE_NOT_FOUND));
+
+        UserRecipe userRecipe = userRecipeRepository.findByAppUserIdAndRecipeId(userId, recipeId)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.USER_RECIPE_ACCESS_DENIED));
 
 
         List<String> instructionList = (recipe.getInstructions() == null || recipe.getInstructions().isBlank())

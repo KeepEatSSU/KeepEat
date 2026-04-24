@@ -14,10 +14,19 @@ public enum ErrorCode {
     INGREDIENT_STORAGE_NOT_FOUND(HttpStatus.NOT_FOUND, "식재료 보관 정보를 찾을 수 없습니다."),
     USER_INGREDIENT_NOT_FOUND(HttpStatus.NOT_FOUND, "사용자 식재료를 찾을 수 없습니다."),
     USER_INGREDIENT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 식재료에 접근할 수 없습니다."),
+
     // OCR
     OCR_API_FAILURE(HttpStatus.BAD_GATEWAY, "OCR API 호출에 실패했습니다."),
     OCR_INVALID_IMAGE(HttpStatus.BAD_REQUEST, "유효하지 않은 이미지 형식입니다."),
-    OCR_PARSE_FAILURE(HttpStatus.UNPROCESSABLE_ENTITY, "이미지에서 식재료를 추출할 수 없습니다.");
+    OCR_PARSE_FAILURE(HttpStatus.UNPROCESSABLE_ENTITY, "이미지에서 식재료를 추출할 수 없습니다."),
+
+    // 레시피
+    RECIPE_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 레시피를 찾을 수 없습니다."),
+    USER_RECIPE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 레시피에 접근할 권한이 없습니다."),
+    DUPLICATE_RECIPE(HttpStatus.CONFLICT, "이미 보관함에 저장된 레시피입니다."),
+
+    // 유저
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 유저를 찾을 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;

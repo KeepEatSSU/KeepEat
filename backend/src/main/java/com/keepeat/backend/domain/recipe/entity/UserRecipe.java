@@ -11,7 +11,12 @@ import java.time.LocalDate;
 @Entity
 @Getter
 @NoArgsConstructor
-@Table(name = "user_recipe")
+@Table(name = "user_recipe", uniqueConstraints = {
+        @UniqueConstraint(
+                name = "uk_user_recipe",
+                columnNames = {"app_user_id", "recipe_id"}
+        )
+})
 public class UserRecipe {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -23,7 +28,6 @@ public class UserRecipe {
     private Recipe recipe;
 
 
-    //여기는 User 테이블과 연결될 컬럼임
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "app_user_id", nullable = false)
     private AppUser appUser;

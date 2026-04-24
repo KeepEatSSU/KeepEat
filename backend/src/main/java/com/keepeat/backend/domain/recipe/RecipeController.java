@@ -1,9 +1,6 @@
 package com.keepeat.backend.domain.recipe;
 
-import com.keepeat.backend.domain.recipe.dto.GeneratedRecipesResponseDto;
-import com.keepeat.backend.domain.recipe.dto.MyRecipesResponseDto;
-import com.keepeat.backend.domain.recipe.dto.RecipeDetailResponseDto;
-import com.keepeat.backend.domain.recipe.dto.RegisteredRecipesRequestDto;
+import com.keepeat.backend.domain.recipe.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -52,7 +49,7 @@ public class RecipeController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/api/v1/my-recipe/{recipeId}")
+    @GetMapping("/api/v1/my-recipes/detail/{recipeId}")
     public ResponseEntity<?> getMyRecipeDetail(
             @PathVariable Long recipeId,
             @AuthenticationPrincipal Long userId
@@ -61,5 +58,17 @@ public class RecipeController {
 
         return ResponseEntity.ok(response);
     }
+
+    @PostMapping("/api/v1/my-recipes")
+    public ResponseEntity<Void> addMyRecipes(
+            @Valid @RequestBody MyRecipesRegisterRequestDto request,
+            @AuthenticationPrincipal Long userId
+    ){
+        recipeService.addUserRecipeByIds(userId, request.recipeIds());
+
+        return ResponseEntity.status(HttpStatus.CREATED).build();
+    }
+
+
 
 }

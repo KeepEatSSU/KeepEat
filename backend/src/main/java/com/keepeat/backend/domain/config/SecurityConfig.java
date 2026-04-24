@@ -32,7 +32,12 @@ public class SecurityConfig {
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+                        // Swagger 관련 경로 인증 없이 허용
+                        .requestMatchers("/swagger-ui/**", "/v3/api-docs/**", "/swagger-resources/**").permitAll()
+
+                        // 토큰 없이 패스할 API들
                         .requestMatchers("/api/users/signup", "/api/users/login","/api/users/refresh", "/error").permitAll()
+                        // 그 외 나머지 모든 것들은 인증 필요
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception

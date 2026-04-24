@@ -26,16 +26,17 @@ public class AppUserService {
     public Long signUp(SignUpRequest request) {
 
         // 이메일 중복 검사
-        if (appUserRepository.existsByEmail(request.getEmail())) {
+        if (appUserRepository.existsByEmail(request.email())) {
             throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
         }
 
         // 비밀번호 암호화
-        String encodedPassword = passwordEncoder.encode(request.getPassword());
+        String encodedPassword = passwordEncoder.encode(request.password());
 
         // 저장할 새로운 유저 객체(Entity) 생성
         AppUser newUser = new AppUser(
-                request.getEmail(),
+                request.nickname(),
+                request.email(),
                 encodedPassword,
                 Role.ROLE_USER // 가입하는 사람은 기본적으로 일반 유저(USER) 권한
         );

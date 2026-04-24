@@ -17,6 +17,9 @@ public class AppUser {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @Column(nullable  = false)
+    private String nickname;
+
     @Column(nullable = false)
     private String password; // 암호화된 긴 문자열이 들어갈 자리
 
@@ -38,7 +41,8 @@ public class AppUser {
     }
 
     // 회원을 처음 생성할 때 사용할 생성자
-    public AppUser(String email, String password, Role role) {
+    public AppUser(String nickname, String email, String password, Role role) {
+        this.nickname = nickname;
         this.email = email;
         this.password = password;
         this.role = role;

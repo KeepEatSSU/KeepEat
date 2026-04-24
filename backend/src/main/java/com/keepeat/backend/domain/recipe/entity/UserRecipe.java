@@ -1,6 +1,7 @@
 package com.keepeat.backend.domain.recipe.entity;
 
 
+import com.keepeat.backend.domain.user.entity.AppUser;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -23,15 +24,16 @@ public class UserRecipe {
 
 
     //여기는 User 테이블과 연결될 컬럼임
-    @Column(nullable = false)
-    private Long userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "app_user_id", nullable = false)
+    private AppUser appUser;
 
     @Column(nullable = false)
     private LocalDate createdAt;
 
-    public UserRecipe(Recipe recipe, long userId, LocalDate createdAt){
+    public UserRecipe(Recipe recipe, AppUser appUser, LocalDate createdAt){
         this.recipe = recipe;
-        this.userId = userId;
+        this.appUser = appUser;
         this.createdAt = createdAt;
     }
 }

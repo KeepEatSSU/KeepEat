@@ -12,13 +12,17 @@ import java.util.Optional;
 
 public interface UserRecipeRepository extends JpaRepository<UserRecipe, Long> {
     @Modifying
-    @Query("DELETE FROM UserRecipe ur WHERE ur.userId = :userId AND ur.recipe.id IN :recipeIds")
-    void deleteAllByUserIdAndRecipeIds(@Param("userId") Long userId, @Param("recipeIds") List<Long> recipeIds);
+    @Query("DELETE FROM UserRecipe ur WHERE ur.appUser.id = :userId AND ur.recipe.id IN :recipeIds")
+    void deleteAllByAppUserIdAndRecipeIds(@Param("userId") Long userId, @Param("recipeIds") List<Long> recipeIds);
 
     @Query("SELECT ur FROM UserRecipe ur " +
             "JOIN FETCH ur.recipe r " +
-            "WHERE ur.userId = :userId")
+            "WHERE ur.appUser.id = :userId")
     List<UserRecipe> findAllByUserId(@Param("userId") Long userId);
 
-    Optional<UserRecipe> findByUserIdAndRecipeId(Long userId, Long recipeId);
+    Optional<UserRecipe> findByAppUserIdAndRecipeId(Long userId, Long recipeId);
+
+
+    @Query("SELECT COUNT(ur) FROM UserRecipe ur WHERE ur.appUser.id = :userId AND ur.recipe.id IN :recipeIds")
+    long countByAppUserIdAndRecipeIds(@Param("userId") Long userId, @Param("recipeIds") List<Long> recipeIds);
 }

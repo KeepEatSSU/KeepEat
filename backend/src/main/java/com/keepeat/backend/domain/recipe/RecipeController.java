@@ -27,26 +27,37 @@ public class RecipeController {
     }
 
     @PostMapping("/api/v1/recipes")
-    public ResponseEntity<Void> putRecipes(@RequestBody @Valid RegisteredRecipesRequestDto request){
-        recipeService.saveRecipes(request);
+    public ResponseEntity<Void> putRecipes(
+            @RequestBody @Valid RegisteredRecipesRequestDto request,
+            @AuthenticationPrincipal Long userId
+    ){
+        recipeService.saveRecipes(request, userId);
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
     @DeleteMapping("/api/v1/my-recipes")
-    public ResponseEntity<Void> deleteMyRecipes(@RequestParam List<Long> recipeIds){
-        recipeService.deleteMyRecipes(1L, recipeIds);
+    public ResponseEntity<Void> deleteMyRecipes(
+            @RequestParam List<Long> recipeIds,
+            @AuthenticationPrincipal Long userId)
+    {
+        recipeService.deleteMyRecipes(userId, recipeIds);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/api/v1/my-recipes")
-    public ResponseEntity<MyRecipesResponseDto> getMyRecipesList(){
-        MyRecipesResponseDto response = recipeService.getMyRecipesByUserId(1L);
+    public ResponseEntity<MyRecipesResponseDto> getMyRecipesList(
+            @AuthenticationPrincipal Long userId
+    ){
+        MyRecipesResponseDto response = recipeService.getMyRecipesByUserId(userId);
         return ResponseEntity.ok(response);
     }
 
     @GetMapping("/api/v1/my-recipe/{recipeId}")
-    public ResponseEntity<?> getMyRecipeDetail(@PathVariable Long recipeId){
-        RecipeDetailResponseDto response = recipeService.getDetailOfMyRecipe(1L,recipeId );
+    public ResponseEntity<?> getMyRecipeDetail(
+            @PathVariable Long recipeId,
+            @AuthenticationPrincipal Long userId
+    ){
+        RecipeDetailResponseDto response = recipeService.getDetailOfMyRecipe(userId,recipeId );
 
         return ResponseEntity.ok(response);
     }

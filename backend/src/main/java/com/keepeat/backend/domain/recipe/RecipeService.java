@@ -8,6 +8,8 @@ import com.keepeat.backend.domain.recipe.entity.RecipeIngredient;
 import com.keepeat.backend.domain.recipe.entity.UserRecipe;
 import com.keepeat.backend.domain.recipe.repository.RecipeRepository;
 import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
+import com.keepeat.backend.domain.user.entity.AppUser;
+import com.keepeat.backend.domain.user.repository.AppUserRepository;
 import com.keepeat.backend.domain.userIngredient.UserIngredient;
 import com.keepeat.backend.domain.userIngredient.UserIngredientRepository;
 import lombok.extern.slf4j.Slf4j;
@@ -27,15 +29,19 @@ public class RecipeService {
     private final RecipeRepository recipeRepository;
     private final UserIngredientRepository userIngredientRepository;
     private final UserRecipeRepository userRecipeRepository;
+    private final AppUserRepository appUserRepository;
 
     public RecipeService(ChatClient.Builder chatClientBuilder,
                          RecipeRepository recipeRepository,
                          UserIngredientRepository userIngredientRepository,
-                         UserRecipeRepository userRecipeRepository){
+                         UserRecipeRepository userRecipeRepository,
+                         AppUserRepository appUserRepository){
 
         this.recipeRepository = recipeRepository;
         this.userIngredientRepository = userIngredientRepository;
         this.userRecipeRepository = userRecipeRepository;
+        this.appUserRepository = appUserRepository;
+
 
         this.chatClient = chatClientBuilder
                 .defaultOptions(GoogleGenAiChatOptions.builder()
@@ -140,9 +146,7 @@ public class RecipeService {
     // 그래서 사용자가 내 레시피에 등록하고 해제하는 로직은 따로 만들어야 할 듯.
     // 이거는 사용자가 레시피 추천 기능에서 내 레시피에 등록하는 레시피를 DB에 저장할 때 사용하는 로직임.
     @Transactional
-    public void saveRecipes(RegisteredRecipesRequestDto requestRecipes){
-        // 유저 가져오는 로직
-        Long userId = 1L;
+    public void saveRecipes(RegisteredRecipesRequestDto requestRecipes, Long userId){
 
 
         List<Recipe> recipeList = new ArrayList<>();
@@ -173,10 +177,12 @@ public class RecipeService {
     // 추후 예외 처리 필요
     @Transactional
     public void addUserRecipeByRecipes(Long userId, List<Recipe> recipes){
+
+        AppUser user = appUserRepository.getReferenceById(userId);
         List<UserRecipe> userRecipeList = new ArrayList<>();
 
         for(Recipe recipe : recipes){
-            userRecipeList.add(new UserRecipe(recipe, userId, LocalDate.now()));
+            userRecipeList.add(new UserRecipe(recipe, user, LocalDate.now()));
         }
 
         userRecipeRepository.saveAll(userRecipeList);
@@ -198,7 +204,13 @@ public class RecipeService {
     // 그래서 그 유저 id와 레시피 id가 실제로 user_recipe에 있는지 확인하려면 그 로직 필요함.
     @Transactional
     public void deleteMyRecipes(Long userId, List<Long> recipeIds){
-        userRecipeRepository.deleteAllByUserIdAndRecipeIds(userId, recipeIds);
+        long matchingCountForValid = userRecipeRepository.countByAppUserIdAndRecipeIds(userId, recipeIds);
+
+        if(matchingCountForValid != recipeIds.size()){
+            throw new IllegalArgumentException("삭제 요청한 레시피 중 일부가 존재하지 않거나 본인의 레시피가 아님 ㄲㅈ 셈");
+        }
+
+        userRecipeRepository.deleteAllByAppUserIdAndRecipeIds(userId, recipeIds);
     }
 
 
@@ -230,13 +242,12 @@ public class RecipeService {
     @Transactional(readOnly = true)
     public RecipeDetailResponseDto getDetailOfMyRecipe(Long userId, Long recipeId){
 
-        UserRecipe userRecipe = userRecipeRepository.findByUserIdAndRecipeId(userId, recipeId)
+        UserRecipe userRecipe = userRecipeRepository.findByAppUserIdAndRecipeId(userId, recipeId)
                 .orElseThrow(() -> new RuntimeException("당신에게 그런 레시피 없어용. ㄲㅈ셈"));
 
         Recipe recipe = recipeRepository.findByIdWithIngredient(recipeId)
                 .orElseThrow(() -> new RuntimeException("해당레시피 찾을 수 없으셈. ㄲㅈ셈"));
 
-        List<RecipeIngredient> recipeIngredients = recipe.getRequiredIngredients();
 
         List<String> instructionList = (recipe.getInstructions() == null || recipe.getInstructions().isBlank())
                 ? new ArrayList<>()

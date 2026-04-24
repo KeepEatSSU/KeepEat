@@ -12,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
@@ -39,8 +40,8 @@ public class UserIngredientController {
     })
     @PostMapping
     public ResponseEntity<List<UserIngredientResponse>> create(
+            @AuthenticationPrincipal Long userId,
             @RequestBody @Valid UserIngredientBulkCreateRequest request) {
-        Long userId = getCurrentUserId();
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(userIngredientService.create(userId, request.items()));
     }
@@ -51,8 +52,7 @@ public class UserIngredientController {
             @ApiResponse(responseCode = "204", description = "보유 식재료 없음 (빈 냉장고)")
     })
     @GetMapping
-    public ResponseEntity<List<UserIngredientResponse>> findAll() {
-        Long userId = getCurrentUserId();
+    public ResponseEntity<List<UserIngredientResponse>> findAll(@AuthenticationPrincipal Long userId) {
         List<UserIngredientResponse> result = userIngredientService.findAll(userId);
         if (result.isEmpty()) {
             return ResponseEntity.noContent().build();
@@ -67,8 +67,8 @@ public class UserIngredientController {
     })
     @GetMapping("/search")
     public ResponseEntity<List<UserIngredientResponse>> search(
+            @AuthenticationPrincipal Long userId,
             @Parameter(description = "검색어 (식재료명)", example = "우유") @RequestParam String q) {
-        Long userId = getCurrentUserId();
         List<UserIngredientResponse> result = userIngredientService.search(userId, q);
         if (result.isEmpty()) {
             return ResponseEntity.noContent().build();
@@ -83,9 +83,9 @@ public class UserIngredientController {
     })
     @PatchMapping("/{id}")
     public ResponseEntity<UserIngredientResponse> update(
+            @AuthenticationPrincipal Long userId,
             @PathVariable Long id,
             @RequestBody UserIngredientRequest request) {
-        Long userId = getCurrentUserId();
         return ResponseEntity.ok(userIngredientService.update(userId, id, request));
     }
 
@@ -95,14 +95,8 @@ public class UserIngredientController {
             @ApiResponse(responseCode = "404", description = "식재료를 찾을 수 없음")
     })
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> delete(@PathVariable Long id) {
-        Long userId = getCurrentUserId();
+    public ResponseEntity<Void> delete(@AuthenticationPrincipal Long userId, @PathVariable Long id) {
         userIngredientService.delete(userId, id);
         return ResponseEntity.noContent().build();
-    }
-
-    private Long getCurrentUserId() {
-        // Spring Security 연동 후 실제 인증 사용자 ID로 교체
-        return 1L;
     }
 }

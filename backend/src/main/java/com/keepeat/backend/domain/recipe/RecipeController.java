@@ -70,6 +70,4 @@ public class RecipeController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
-
-
 }

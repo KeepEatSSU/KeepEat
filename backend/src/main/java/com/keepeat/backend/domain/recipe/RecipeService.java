@@ -1,7 +1,5 @@
 package com.keepeat.backend.domain.recipe;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.recipe.dto.*;
@@ -21,12 +19,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -110,11 +105,11 @@ public class RecipeService {
 
         long matchingCountForValid = userRecipeRepository.countByAppUserIdAndRecipeIds(userId, distinctRecipeIds);
 
-        if(matchingCountForValid != recipeIds.size()){
+        if(matchingCountForValid != distinctRecipeIds.size()){
             throw new KeepEatException(ErrorCode.USER_RECIPE_ACCESS_DENIED);
         }
 
-        userRecipeRepository.deleteAllByAppUserIdAndRecipeIds(userId, recipeIds);
+        userRecipeRepository.deleteAllByAppUserIdAndRecipeIds(userId, distinctRecipeIds);
     }
 
 

@@ -1,15 +1,16 @@
 package com.keepeat.backend.domain.recipe;
-
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import com.keepeat.backend.domain.common.exception.ErrorCode;
+import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.recipe.dto.GeneratedRecipesResponseDto;
-
 import com.keepeat.backend.domain.useringredient.UserIngredient;
 import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
+import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.retry.TransientAiException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
@@ -64,64 +65,72 @@ public class RecipeAiService {
     }
 
 
+
+
+
+
+    @Transactional(readOnly = true)
     public GeneratedRecipesResponseDto generateRecipes(Long userId) {
 
-        ObjectMapper objectMapper = new ObjectMapper();
-
-
-        String userIngredientJsonString = "";
-
-        // null일 경우 예외처리 로직 필요(추후)
+        GeneratedRecipesResponseDto responseFromAi;
+        List<String> userCondiment = new ArrayList<>();
         List<UserIngredient> userIngredients = userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId);
-
         List<Map<String, Object>> ingredientList = new ArrayList<>();
 
         for (UserIngredient ui : userIngredients) {
-            long daysLeft = calculateDaysLeft(ui.getExpiryDate());
-            Map<String, Object> data = new HashMap<>();
 
-            data.put("name", ui.getIngredient().getName());
-            data.put("days_left", daysLeft);
+            String categoryName = ui.getIngredient().getSubCategory().getCategory().getName();
 
-            ingredientList.add(data);
+            if("양념/소스".equals(categoryName)){
+                userCondiment.add(ui.getIngredient().getName());
+            }else{
+                long daysLeft = calculateDaysLeft(ui.getExpiryDate());
+                Map<String, Object> data = new HashMap<>();
+
+                data.put("name", ui.getIngredient().getName());
+                data.put("days_left", daysLeft);
+
+                ingredientList.add(data);
+            }
         }
 
-        // 임시 예외 처리 로직(추후 수정)
-        try {
-            userIngredientJsonString = objectMapper.writeValueAsString(ingredientList);
-        } catch (JsonProcessingException e) {
-            throw new RuntimeException("프롬프트에 사용할 데이터를 JSON으로 변환하는 중에 에러가 발생했습니다.", e);
+        // 사용자 보유 식재료 확인용 로그
+        log.debug(ingredientList.toString());
+        log.debug(userCondiment.toString());
+
+        if(ingredientList.size() < 3 || userCondiment.size() < 3){
+            throw new KeepEatException(ErrorCode.INSUFFICIENT_INGREDIENTS);
         }
 
-        log.info(userIngredientJsonString);
 
-
-        // 식재료 까지는 프롬프트에 넣을 수 있게 변환 되었음.
-        // 나중에 사용자가 보유중인 조미료만 따로 가져오는 로직이 추가로 필요함.
-
-
-        GeneratedRecipesResponseDto responseFromAi = chatClient.prompt()
-                .user("""        
+        String userPrompt = """        
                         보유 식재료
-                        [
-                        {"name": "생삼겹살", "days_left": 1},
-                        {"name": "생굴", "days_left": 1},
-                        {"name": "시금치", "days_left": 1},
-                        {"name": "고사리", "days_left": 2},
-                        {"name": "두부", "days_left": 2},
-                        {"name": "무", "days_left": 10},
-                        {"name": "대파", "days_left": 5},
-                        {"name": "느타리버섯", "days_left": 2},
-                        {"name": "냉동 차돌박이", "days_left": 100},
-                        {"name": "묵은지", "days_left": 60},
-                        {"name": "콩나물", "days_left": 2},
-                        {"name": "애호박", "days_left": 4}
-                        ]
+                        %s
+                        
                         보유 조미료 (Seasonings)
-                        ["고추장", "된장", "간장", "고춧가루", "다진 마늘", "참기름", "식용유", "설탕"]
-                        """)
-                .call()
-                .entity(GeneratedRecipesResponseDto.class);
+                        %s
+                        """.formatted(ingredientList.toString(), userCondiment.toString());
+
+        try{
+             responseFromAi = chatClient.prompt()
+                    .user(userPrompt)
+                    .call()
+                    .entity(GeneratedRecipesResponseDto.class);
+        }catch (TransientAiException e){
+            log.warn("AI 일시적 오류 - userId: {}, 원인: {}", userId, e.getMessage());
+            throw new KeepEatException(ErrorCode.AI_API_FAILURE);
+        }catch (NonTransientAiException e){
+            log.error("AI 영구적 오류 - userId: {}, 원인: {}", userId, e.getMessage(), e);
+            throw new KeepEatException(ErrorCode.AI_API_FAILURE);
+        }catch (Exception e){
+            log.error("AI 응답 파싱 실패 - userId: {}", userId, e);
+            throw new KeepEatException(ErrorCode.AI_RESPONSE_PARSE_FAILURE);
+        }
+
+        if(responseFromAi == null || responseFromAi.recipes() == null || responseFromAi.recipes().isEmpty()) {
+            throw new KeepEatException(ErrorCode.AI_RESPONSE_PARSE_FAILURE);
+        }
+
 
         return responseFromAi;
     }

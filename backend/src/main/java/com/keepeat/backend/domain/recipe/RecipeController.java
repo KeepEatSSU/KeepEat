@@ -14,12 +14,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RecipeController {
     private final RecipeService recipeService;
+    private final RecipeAiService recipeAiService;
 
     @PostMapping("/api/v1/recipes/generate")
     public ResponseEntity<GeneratedRecipesResponseDto> getGeneratedRecipes(
             @AuthenticationPrincipal Long userId
     ){
-        GeneratedRecipesResponseDto response = recipeService.generateRecipes(userId);
+        GeneratedRecipesResponseDto response = recipeAiService.generateRecipes(userId);
         return ResponseEntity.ok(response);
     }
 

@@ -11,7 +11,8 @@ import java.util.Optional;
 public interface RecipeRepository extends JpaRepository<Recipe, Long> {
 
     @Query("SELECT r FROM Recipe r " +
-            "LEFT JOIN FETCH r.requiredIngredients i " +
+            "LEFT JOIN FETCH r.requiredIngredients ri " +
+            "JOIN FETCH ri.ingredient " +
             "WHERE r.id = :recipeId")
     Optional<Recipe> findByIdWithIngredient(@Param("recipeId") Long recipeId);
 }

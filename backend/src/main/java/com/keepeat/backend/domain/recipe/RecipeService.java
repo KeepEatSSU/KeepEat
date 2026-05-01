@@ -2,6 +2,8 @@ package com.keepeat.backend.domain.recipe;
 
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
+import com.keepeat.backend.domain.ingredient.Ingredient;
+import com.keepeat.backend.domain.ingredient.IngredientMappingService;
 import com.keepeat.backend.domain.recipe.dto.*;
 import com.keepeat.backend.domain.recipe.entity.Recipe;
 import com.keepeat.backend.domain.recipe.entity.RecipeIngredient;
@@ -20,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDate;
 import java.util.*;
@@ -34,34 +37,47 @@ public class RecipeService {
     private final UserIngredientRepository userIngredientRepository;
     private final UserRecipeRepository userRecipeRepository;
     private final AppUserRepository appUserRepository;
+    private final IngredientMappingService ingredientMappingService;
+    private final TransactionTemplate transactionTemplate;
 
     // 레시피 데이터들 받아서 레시피 저장 하고 관심 레시피 등록
-    @Transactional
     public void saveRecipes(RegisteredRecipesRequestDto requestRecipes, Long userId){
 
         List<Recipe> recipeList = new ArrayList<>();
 
-        for(RegisteredRecipeDto requestRecipe : requestRecipes.recipes()){
-            Recipe recipe = Recipe.builder()
-                    .recipeName(requestRecipe.recipeName())
-                    .cookingMethod(requestRecipe.cookingMethod())
-                    .cookingTime(requestRecipe.cookingTime())
-                    .calories(requestRecipe.calories())
-                    .difficulty(requestRecipe.difficulty())
-                    .instructions(String.join("\n", requestRecipe.instructions()))
-                    .createdAt(LocalDate.now())
-                    .build();
+        List<String> allIngredientNames = requestRecipes.recipes().stream()
+                .flatMap(recipe -> recipe.requiredIngredients().stream())
+                .map(ingredient -> ingredient.name())
+                .toList();
 
-            for(RecipeIngredientDto requestIngredient : requestRecipe.requiredIngredients()){
-                RecipeIngredient recipeIngredient = new RecipeIngredient(requestIngredient.name(), requestIngredient.amount(), recipe);
-                recipe.getRequiredIngredients().add(recipeIngredient);
+        Map<String, Ingredient> ingredientMap = ingredientMappingService.resolveIngredients(allIngredientNames);
+
+        transactionTemplate.executeWithoutResult(status -> {
+            for(RegisteredRecipeDto requestRecipe : requestRecipes.recipes()){
+                Recipe recipe = Recipe.builder()
+                        .recipeName(requestRecipe.recipeName())
+                        .cookingMethod(requestRecipe.cookingMethod())
+                        .cookingTime(requestRecipe.cookingTime())
+                        .calories(requestRecipe.calories())
+                        .difficulty(requestRecipe.difficulty())
+                        .instructions(String.join("\n", requestRecipe.instructions()))
+                        .createdAt(LocalDate.now())
+                        .build();
+
+                for(RecipeIngredientDto requestIngredient : requestRecipe.requiredIngredients()){
+                    Ingredient ingredient = ingredientMap.get(requestIngredient.name());
+                    RecipeIngredient recipeIngredient = new RecipeIngredient(ingredient, requestIngredient.amount(), recipe);
+                    recipe.getRequiredIngredients().add(recipeIngredient);
+                }
+                recipeList.add(recipe);
             }
-            recipeList.add(recipe);
-        }
-        recipeRepository.saveAll(recipeList);
+            recipeRepository.saveAll(recipeList);
 
-        addUserRecipeByRecipes(userId, recipeList);
+            addUserRecipeByRecipes(userId, recipeList);
+        });
+
     }
+
 
     // 레시피 데이터들 받아서 관심 레시피 저장 하는 헬퍼 메서드
     private void addUserRecipeByRecipes(Long userId, List<Recipe> recipes){
@@ -152,14 +168,16 @@ public class RecipeService {
 
         List<UserIngredient> userIngredients = userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId);
 
-        Set<String> userIngredientSet = userIngredients.stream()
-                .map(ingredient -> ingredient.getIngredient().getName())
+        Set<Long> userIngredientSet = userIngredients.stream()
+                .map(ingredient -> ingredient.getIngredient().getId())
                 .collect(Collectors.toSet());
 
         List<RecipeIngredientDetailDto> recipeIngredientList = new ArrayList<>();
+
         for(RecipeIngredient ingredient : recipe.getRequiredIngredients()){
-            boolean isOwned = userIngredientSet.contains(ingredient.getName());
-            recipeIngredientList.add(new RecipeIngredientDetailDto(ingredient.getName(), ingredient.getAmount(), isOwned));
+            boolean isOwned = userIngredientSet.contains(ingredient.getIngredient().getId());
+            recipeIngredientList.add(new RecipeIngredientDetailDto(
+                    ingredient.getIngredient().getName(), ingredient.getAmount(), isOwned));
         }
 
         RecipeDetailResponseDto response = RecipeDetailResponseDto.builder()

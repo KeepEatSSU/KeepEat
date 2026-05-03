@@ -4,6 +4,8 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
 import java.nio.charset.StandardCharsets;
+
+import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
 import com.keepeat.backend.domain.security.JwtProvider;
 import com.keepeat.backend.domain.user.dto.*;
 import com.keepeat.backend.domain.user.entity.AppUser;
@@ -21,6 +23,7 @@ public class AppUserService {
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
+    private final UserRecipeRepository userRecipeRepository;
 
     @Transactional
     public Long signUp(SignUpRequest request) {
@@ -119,7 +122,7 @@ public class AppUserService {
     public UserResponse getUserInfo(Long userId) {
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
-        return new UserResponse(user.getId(), user.getEmail(), user.getRole());
+        return new UserResponse(user.getId(), user.getEmail(), user.getRole(), user.getProvider());
     }
 
     private String hashToken(String token) {
@@ -130,5 +133,17 @@ public class AppUserService {
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("해싱 알고리즘을 찾을 수 없습니다.", e);
         }
+    }
+
+    @Transactional
+    public void deleteUser(Long userId) {
+
+        // 모든 레시피 삭제 
+        userRecipeRepository.deleteAllByUserId(userId);
+
+        // 유저 삭제
+        AppUser user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+        appUserRepository.delete(user);
     }
 }

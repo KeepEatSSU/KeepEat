@@ -20,7 +20,7 @@ public class AppUser {
     @Column(nullable  = false)
     private String nickname;
 
-    @Column(nullable = false)
+    @Column(nullable = true)
     private String password; // 암호화된 긴 문자열이 들어갈 자리
 
     @Enumerated(EnumType.STRING) // Enum 이름을 DB에 문자열로 저장
@@ -29,6 +29,9 @@ public class AppUser {
 
     @Column(length = 512)
     private String refreshToken;
+
+    private String provider;    // "google", "kakao" 등
+    private String providerId;
 
     // 토큰 갱신을 위한 메서드
     public void updateRefreshToken(String refreshToken) {
@@ -40,11 +43,22 @@ public class AppUser {
         this.refreshToken = null;
     }
 
-    // 회원을 처음 생성할 때 사용할 생성자
+    // 일반 회원가입용
     public AppUser(String nickname, String email, String password, Role role) {
         this.nickname = nickname;
         this.email = email;
         this.password = password;
+        this.role = role;
+        this.provider = "LOCAL";
+    }
+
+    // 소셜 로그인용
+    public AppUser(String nickname, String email, String provider, String providerId, Role role) {
+        this.nickname = nickname;
+        this.email = email;
+        this.password = java.util.UUID.randomUUID().toString();
+        this.provider = provider;
+        this.providerId = providerId;
         this.role = role;
     }
 }

@@ -21,4 +21,6 @@ public interface UserRecipeRepository extends JpaRepository<UserRecipe, Long> {
     List<UserRecipe> findAllByUserId(@Param("userId") Long userId);
 
     Optional<UserRecipe> findByUserIdAndRecipeId(Long userId, Long recipeId);
+
+    void deleteAllByUserId(Long userId);
 }

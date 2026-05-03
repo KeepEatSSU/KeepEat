@@ -29,7 +29,7 @@ public class Ingredient {
     @JoinColumn(name = "sub_category_id", nullable = false)
     private SubCategory subCategory;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String name;
 
     @Builder

@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.recipe.dto;
 
 import com.keepeat.backend.domain.common.enums.CookingMethod;
 import com.keepeat.backend.domain.common.enums.Difficulty;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.NotNull;
@@ -26,6 +27,7 @@ public record RegisteredRecipeDto(
         Integer calories,
 
         @NotEmpty(message = "레시피에 필요한 재료가 누락되었습니다.")
+        @Valid
         List<RecipeIngredientDto> requiredIngredients,
 
         @NotEmpty(message = "조리방법이 누락되었습니다.")

@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.recipe.entity;
 
+import com.keepeat.backend.domain.ingredient.Ingredient;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -15,20 +16,21 @@ public class RecipeIngredient {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
-    private String name;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "ingredient_id", nullable = false)
+    private Ingredient ingredient;
 
     @Column(nullable = false)
     private String amount;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "recipe_id")
+    @JoinColumn(name = "recipe_id", nullable = false)
     private Recipe recipe;
 
 
     @Builder
-    public RecipeIngredient(String name, String amount, Recipe recipe) {
-        this.name = name;
+    public RecipeIngredient(Ingredient ingredient, String amount, Recipe recipe) {
+        this.ingredient = ingredient;
         this.amount = amount;
         this.recipe = recipe;
 

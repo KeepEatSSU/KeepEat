@@ -50,3 +50,6 @@ AGENTS.md
 .claude/
 data.sql
 scripts/
+
+### 테스트용 Dockerfile (비공개) ###
+Dockerfile

@@ -20,7 +20,11 @@ public interface UserRecipeRepository extends JpaRepository<UserRecipe, Long> {
             "WHERE ur.appUser.id = :userId")
     List<UserRecipe> findAllByUserId(@Param("userId") Long userId);
 
+
     Optional<UserRecipe> findByAppUserIdAndRecipeId(Long userId, Long recipeId);
+
+
+    void deleteAllByAppUserId(Long userId);
 
 
     @Query("SELECT COUNT(ur) FROM UserRecipe ur WHERE ur.appUser.id = :userId AND ur.recipe.id IN :recipeIds")

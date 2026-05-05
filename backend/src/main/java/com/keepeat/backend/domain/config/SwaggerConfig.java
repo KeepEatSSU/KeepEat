@@ -13,6 +13,7 @@ public class SwaggerConfig {
 
     @Bean
     public OpenAPI openAPI() {
+
         String jwtSchemeName = "BearerAuth";
 
         // API 요청 헤더에 토큰을 포함시키도록 설정

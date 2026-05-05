@@ -1,6 +1,7 @@
 package com.keepeat.backend.domain.recipe.entity;
 
 
+import com.keepeat.backend.domain.user.entity.AppUser;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -10,7 +11,12 @@ import java.time.LocalDate;
 @Entity
 @Getter
 @NoArgsConstructor
-@Table(name = "user_recipe")
+@Table(name = "user_recipe", uniqueConstraints = {
+        @UniqueConstraint(
+                name = "uk_user_recipe",
+                columnNames = {"app_user_id", "recipe_id"}
+        )
+})
 public class UserRecipe {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -22,16 +28,16 @@ public class UserRecipe {
     private Recipe recipe;
 
 
-    //여기는 User 테이블과 연결될 컬럼임
-    @Column(nullable = false)
-    private Long userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "app_user_id", nullable = false)
+    private AppUser appUser;
 
     @Column(nullable = false)
     private LocalDate createdAt;
 
-    public UserRecipe(Recipe recipe, long userId, LocalDate createdAt){
+    public UserRecipe(Recipe recipe, AppUser appUser, LocalDate createdAt){
         this.recipe = recipe;
-        this.userId = userId;
+        this.appUser = appUser;
         this.createdAt = createdAt;
     }
 }

@@ -1,9 +1,6 @@
 package com.keepeat.backend.domain.recipe;
 
-import com.keepeat.backend.domain.recipe.dto.GeneratedRecipesResponseDto;
-import com.keepeat.backend.domain.recipe.dto.MyRecipesResponseDto;
-import com.keepeat.backend.domain.recipe.dto.RecipeDetailResponseDto;
-import com.keepeat.backend.domain.recipe.dto.RegisteredRecipesRequestDto;
+import com.keepeat.backend.domain.recipe.dto.*;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -17,38 +14,60 @@ import java.util.List;
 @RequiredArgsConstructor
 public class RecipeController {
     private final RecipeService recipeService;
+    private final RecipeAiService recipeAiService;
 
     @PostMapping("/api/v1/recipes/generate")
     public ResponseEntity<GeneratedRecipesResponseDto> getGeneratedRecipes(
             @AuthenticationPrincipal Long userId
     ){
-        GeneratedRecipesResponseDto response = recipeService.generateRecipes(userId);
+        GeneratedRecipesResponseDto response = recipeAiService.generateRecipes(userId);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/api/v1/recipes")
-    public ResponseEntity<Void> putRecipes(@RequestBody @Valid RegisteredRecipesRequestDto request){
-        recipeService.saveRecipes(request);
+    public ResponseEntity<Void> putRecipes(
+            @RequestBody @Valid RegisteredRecipesRequestDto request,
+            @AuthenticationPrincipal Long userId
+    ){
+        recipeService.saveRecipes(request, userId);
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
     @DeleteMapping("/api/v1/my-recipes")
-    public ResponseEntity<Void> deleteMyRecipes(@RequestParam List<Long> recipeIds){
-        recipeService.deleteMyRecipes(1L, recipeIds);
+    public ResponseEntity<Void> deleteMyRecipes(
+            @RequestParam List<Long> recipeIds,
+            @AuthenticationPrincipal Long userId)
+    {
+        recipeService.deleteMyRecipes(userId, recipeIds);
         return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/api/v1/my-recipes")
-    public ResponseEntity<MyRecipesResponseDto> getMyRecipesList(){
-        MyRecipesResponseDto response = recipeService.getMyRecipesByUserId(1L);
+    public ResponseEntity<MyRecipesResponseDto> getMyRecipesList(
+            @AuthenticationPrincipal Long userId
+    ){
+        MyRecipesResponseDto response = recipeService.getMyRecipesByUserId(userId);
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/api/v1/my-recipe/{recipeId}")
-    public ResponseEntity<?> getMyRecipeDetail(@PathVariable Long recipeId){
-        RecipeDetailResponseDto response = recipeService.getDetailOfMyRecipe(1L,recipeId );
+    @GetMapping("/api/v1/my-recipes/detail/{recipeId}")
+    public ResponseEntity<?> getMyRecipeDetail(
+            @PathVariable Long recipeId,
+            @AuthenticationPrincipal Long userId
+    ){
+        RecipeDetailResponseDto response = recipeService.getDetailOfMyRecipe(userId,recipeId );
 
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/api/v1/my-recipes")
+    public ResponseEntity<Void> addMyRecipes(
+            @Valid @RequestBody MyRecipesRegisterRequestDto request,
+            @AuthenticationPrincipal Long userId
+    ){
+        recipeService.addUserRecipeByIds(userId, request.recipeIds());
+
+        return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
 }

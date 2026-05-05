@@ -15,7 +15,7 @@ public record RecipeDetailResponseDto(
         CookingMethod cookingMethod,
         String cookingTime,
         Integer calories,
-        List<RecipeIngredientDto> requiredIngredients,
+        List<RecipeIngredientDetailDto> requiredIngredients,
         List<String> instructions,
         LocalDate createdAt
 ) { }

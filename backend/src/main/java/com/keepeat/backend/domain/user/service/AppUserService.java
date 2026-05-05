@@ -139,7 +139,7 @@ public class AppUserService {
     public void deleteUser(Long userId) {
 
         // 모든 레시피 삭제 
-        userRecipeRepository.deleteAllByUserId(userId);
+        userRecipeRepository.deleteAllByAppUserId(userId);
 
         // 유저 삭제
         AppUser user = appUserRepository.findById(userId)

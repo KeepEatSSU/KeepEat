@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<head th:replace="~{admin/layout :: head(${mode == 'new'} ? '식재료 추가' : '식재료 수정')}"></head>
+<body class="bg-light">
+<nav th:replace="~{admin/layout :: nav}"></nav>
+
+<div class="container my-4" style="max-width: 720px;">
+    <h3 class="mb-3" th:text="${mode == 'new'} ? '식재료 추가' : '식재료 수정'"></h3>
+
+    <div th:if="${error}" class="alert alert-danger" th:text="${error}"></div>
+
+    <form th:object="${form}"
+          th:action="${mode == 'new'} ? @{/admin/ingredients} : @{|/admin/ingredients/${ingredientId}|}"
+          method="post"
+          class="card card-body">
+        <div class="mb-3">
+            <label class="form-label">식재료명</label>
+            <input type="text" th:field="*{name}" class="form-control" required>
+            <div th:if="${#fields.hasErrors('name')}" class="text-danger small" th:errors="*{name}"></div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">서브카테고리</label>
+            <select th:field="*{subCategoryId}" class="form-select" required>
+                <option value="">선택...</option>
+                <option th:each="sc : ${subCategories}"
+                        th:value="${sc.id}"
+                        th:text="|${sc.category.name} > ${sc.name}|"></option>
+            </select>
+            <div th:if="${#fields.hasErrors('subCategoryId')}" class="text-danger small" th:errors="*{subCategoryId}"></div>
+        </div>
+
+        <hr>
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <label class="form-label mb-0">보관 정보 (보관 방식별 유통기한)</label>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="addStorageBtn">+ 행 추가</button>
+        </div>
+
+        <div id="storageRows">
+            <div th:each="storage, iter : *{storages}" class="row g-2 mb-2 storage-row">
+                <div class="col-md-3">
+                    <select th:field="*{storages[__${iter.index}__].storageType}" class="form-select">
+                        <option th:each="t : ${storageTypes}" th:value="${t}" th:text="${t}"></option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <input type="number" th:field="*{storages[__${iter.index}__].min}" class="form-control" placeholder="min" min="0">
+                </div>
+                <div class="col-md-2">
+                    <input type="number" th:field="*{storages[__${iter.index}__].max}" class="form-control" placeholder="max" min="0">
+                </div>
+                <div class="col-md-3">
+                    <select th:field="*{storages[__${iter.index}__].metric}" class="form-select">
+                        <option th:each="m : ${metrics}" th:value="${m}" th:text="${m}"></option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-outline-danger w-100 remove-row">삭제</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 d-flex gap-2">
+            <button type="submit" class="btn btn-primary" th:text="${mode == 'new'} ? '추가' : '저장'"></button>
+            <a href="/admin/ingredients" class="btn btn-outline-secondary">취소</a>
+        </div>
+    </form>
+</div>
+
+<script th:inline="javascript">
+    /*<![CDATA[*/
+    const storageTypes = /*[[${storageTypes}]]*/ [];
+    const metrics = /*[[${metrics}]]*/ [];
+
+    const rowsEl = document.getElementById('storageRows');
+    const addBtn = document.getElementById('addStorageBtn');
+
+    function rowTemplate(idx) {
+        const typeOpts = storageTypes.map(t => `<option value="${t}">${t}</option>`).join('');
+        const metricOpts = metrics.map(m => `<option value="${m}">${m}</option>`).join('');
+        return `
+        <div class="row g-2 mb-2 storage-row">
+            <div class="col-md-3"><select name="storages[${idx}].storageType" class="form-select">${typeOpts}</select></div>
+            <div class="col-md-2"><input type="number" name="storages[${idx}].min" class="form-control" placeholder="min" min="0"></div>
+            <div class="col-md-2"><input type="number" name="storages[${idx}].max" class="form-control" placeholder="max" min="0"></div>
+            <div class="col-md-3"><select name="storages[${idx}].metric" class="form-select">${metricOpts}</select></div>
+            <div class="col-md-2"><button type="button" class="btn btn-outline-danger w-100 remove-row">삭제</button></div>
+        </div>`;
+    }
+
+    addBtn.addEventListener('click', () => {
+        const idx = rowsEl.querySelectorAll('.storage-row').length;
+        rowsEl.insertAdjacentHTML('beforeend', rowTemplate(idx));
+    });
+
+    rowsEl.addEventListener('click', (e) => {
+        if (e.target.classList.contains('remove-row')) {
+            e.target.closest('.storage-row').remove();
+            // 인덱스 재정렬
+            rowsEl.querySelectorAll('.storage-row').forEach((row, i) => {
+                row.querySelectorAll('[name^="storages["]').forEach(input => {
+                    input.name = input.name.replace(/storages\[\d+\]/, `storages[${i}]`);
+                });
+            });
+        }
+    });
+    /*]]>*/
+</script>
+</body>
+</html>

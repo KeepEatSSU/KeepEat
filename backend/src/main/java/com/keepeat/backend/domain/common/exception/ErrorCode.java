@@ -29,7 +29,11 @@ public enum ErrorCode {
     AI_RESPONSE_PARSE_FAILURE(HttpStatus.INTERNAL_SERVER_ERROR, "AI 응답을 처리하는 중 오류가 발생했습니다."),
 
     // 유저
-    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 유저를 찾을 수 없습니다.");
+    USER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 유저를 찾을 수 없습니다."),
+
+    // 어드민
+    ADMIN_ACCESS_DENIED(HttpStatus.FORBIDDEN, "어드민 권한이 필요합니다."),
+    INGREDIENT_NAME_DUPLICATED(HttpStatus.CONFLICT, "이미 존재하는 식재료입니다.");
 
     private final HttpStatus status;
     private final String message;

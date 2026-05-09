@@ -39,6 +39,8 @@ public class SecurityConfig {
 
 
                         .requestMatchers("/api/users/signup", "/api/users/login","/api/users/refresh", "/error", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/admin/login").permitAll()
+                        .requestMatchers("/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception

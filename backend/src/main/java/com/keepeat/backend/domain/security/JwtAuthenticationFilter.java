@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.security;
 
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
+import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +18,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
+    private static final String ADMIN_TOKEN_COOKIE = "ADMIN_TOKEN";
+
     private final JwtProvider jwtProvider;
 
     @Override
@@ -27,9 +30,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null && jwtProvider.validateToken(token)) {
 
             Long id = jwtProvider.getId(token);
+            String role = jwtProvider.getRole(token);
 
             UsernamePasswordAuthenticationToken authentication =
-                    new UsernamePasswordAuthenticationToken(id, null, List.of(new SimpleGrantedAuthority("ROLE_USER")));
+                    new UsernamePasswordAuthenticationToken(id, null, List.of(new SimpleGrantedAuthority(role)));
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
@@ -41,6 +45,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         String bearerToken = request.getHeader("Authorization");
         if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
             return bearerToken.substring(7); // "Bearer " 이후의 텍스트만 가져옴
+        }
+
+        // 어드민 페이지는 HttpOnly 쿠키로 토큰을 전달 — 헤더가 없으면 쿠키도 본다
+        Cookie[] cookies = request.getCookies();
+        if (cookies != null) {
+            for (Cookie cookie : cookies) {
+                if (ADMIN_TOKEN_COOKIE.equals(cookie.getName()) && StringUtils.hasText(cookie.getValue())) {
+                    return cookie.getValue();
+                }
+            }
         }
         return null;
     }

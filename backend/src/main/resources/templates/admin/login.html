@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<head th:replace="~{admin/layout :: head('어드민 로그인')}"></head>
+<body class="bg-light">
+<div class="container" style="max-width: 420px; margin-top: 80px;">
+    <div class="card shadow-sm">
+        <div class="card-body p-4">
+            <h3 class="card-title mb-4">KeepEat Admin</h3>
+
+            <div th:if="${error}" class="alert alert-danger" th:text="${error}"></div>
+
+            <form th:action="@{/admin/login}" th:object="${form}" method="post">
+                <div class="mb-3">
+                    <label for="email" class="form-label">이메일</label>
+                    <input type="email" id="email" th:field="*{email}" class="form-control" required>
+                    <div th:if="${#fields.hasErrors('email')}" class="text-danger small" th:errors="*{email}"></div>
+                </div>
+                <div class="mb-3">
+                    <label for="password" class="form-label">비밀번호</label>
+                    <input type="password" id="password" th:field="*{password}" class="form-control" required>
+                    <div th:if="${#fields.hasErrors('password')}" class="text-danger small" th:errors="*{password}"></div>
+                </div>
+                <button type="submit" class="btn btn-primary w-100">로그인</button>
+            </form>
+        </div>
+    </div>
+</div>
+</body>
+</html>

@@ -37,4 +37,9 @@ public class Ingredient {
         this.subCategory = subCategory;
         this.name = name;
     }
+
+    public void update(SubCategory subCategory, String name) {
+        this.subCategory = subCategory;
+        this.name = name;
+    }
 }

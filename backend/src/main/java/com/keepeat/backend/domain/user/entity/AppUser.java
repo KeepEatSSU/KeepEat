@@ -33,6 +33,11 @@ public class AppUser {
     private String provider;    // "google", "kakao" 등
     private String providerId;
 
+    // 알람 수신 동의 여부
+    @Column(nullable = false)
+    private boolean isNotificationEnabled = true; // 기본값은 알림 켜짐(true)
+
+
     // 토큰 갱신을 위한 메서드
     public void updateRefreshToken(String refreshToken) {
         this.refreshToken = refreshToken;
@@ -60,5 +65,10 @@ public class AppUser {
         this.provider = provider;
         this.providerId = providerId;
         this.role = role;
+    }
+
+    // 알림 설정 토글 메서드
+    public void toggleNotification(boolean status) {
+        this.isNotificationEnabled = status;
     }
 }

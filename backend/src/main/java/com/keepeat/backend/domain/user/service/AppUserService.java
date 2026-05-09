@@ -146,4 +146,15 @@ public class AppUserService {
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
         appUserRepository.delete(user);
     }
+
+    @Transactional
+    public boolean toggleNotification(Long userId) {
+        AppUser user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+
+        // 현재 상태의 반대로 뒤집기 (true -> false, false -> true)
+        user.toggleNotification(!user.isNotificationEnabled());
+
+        return user.isNotificationEnabled(); // 변경된 상태 반환
+    }
 }

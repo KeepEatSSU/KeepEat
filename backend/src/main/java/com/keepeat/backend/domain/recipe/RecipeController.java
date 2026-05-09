@@ -70,4 +70,15 @@ public class RecipeController {
         return ResponseEntity.status(HttpStatus.CREATED).build();
     }
 
+    @PostMapping("/api/v1/recipes/{recipeId}/cook")
+    public ResponseEntity<String> completeCooking(
+            @PathVariable Long recipeId,
+            @AuthenticationPrincipal Long userId
+    ){
+        // 요리 완료 로직 실행 (알림 발송 포함)
+        recipeService.completeCooking(userId, recipeId);
+
+        return ResponseEntity.ok("요리 완료 처리가 성공적으로 기록되었습니다.");
+    }
+
 }

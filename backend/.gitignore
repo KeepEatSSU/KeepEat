@@ -53,3 +53,6 @@ scripts/
 
 ### 테스트용 Dockerfile (비공개) ###
 Dockerfile
+
+### FCM 키 (비공개) ###
+firebase-service-key.json

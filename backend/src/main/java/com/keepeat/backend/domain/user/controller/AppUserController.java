@@ -72,17 +72,13 @@ public class AppUserController {
         return ResponseEntity.ok(userInfo);
     }
 
-    /*
-    // ********************************************************************************
-    // user의 id 사용하는 법
-    // 예시. 그냥 임시로 refrigerator라고 해둠. 이거 삭제 or 수정 ㄱㅊ. 난 안씀
-    // GET http://localhost:8080/api/users/refrigerator
-    @GetMapping("/refrigerator")
-    public ResponseEntity<String> getMyRefrigerator(@AuthenticationPrincipal Long userId) {
-        // 아래는 예시, IngredientDto랑 refrigeratorService.getMyIngredients에 사용하는 곳에 맞춰서 사용.
-        List<IngredientDto> result = refrigeratorService.getMyIngredients(userId);
-        return ResponseEntity.ok(result);
+    @Operation(summary = "알림 수신 설정 변경", description = "전체 푸시 알림의 수신 여부를 토글(ON/OFF)합니다.")
+    @PatchMapping("/me/notification-setting")
+    public ResponseEntity<String> toggleNotificationSetting(@AuthenticationPrincipal Long userId) {
+
+        boolean isEnabled = appUserService.toggleNotification(userId);
+        String message = isEnabled ? "알림 수신이 켜졌습니다." : "알림 수신이 꺼졌습니다.";
+
+        return ResponseEntity.ok(message);
     }
-    // ***********************************************************************************
-    */
 }

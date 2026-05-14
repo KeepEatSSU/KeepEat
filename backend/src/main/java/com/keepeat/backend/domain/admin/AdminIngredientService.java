@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.admin;
 
 import com.keepeat.backend.domain.admin.dto.IngredientFormDto;
 import com.keepeat.backend.domain.admin.dto.IngredientListItemDto;
+import com.keepeat.backend.domain.common.enums.IngredientStatus;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.ingredient.Ingredient;
@@ -29,8 +30,8 @@ public class AdminIngredientService {
     private final SubCategoryRepository subCategoryRepository;
 
     @Transactional(readOnly = true)
-    public Page<IngredientListItemDto> findAll(String keyword, Long subCategoryId, Pageable pageable) {
-        return ingredientRepository.searchForAdmin(keyword, subCategoryId, pageable)
+    public Page<IngredientListItemDto> findAll(String keyword, Long subCategoryId, IngredientStatus status, Pageable pageable) {
+        return ingredientRepository.searchForAdmin(keyword, subCategoryId, status, pageable)
                 .map(IngredientListItemDto::from);
     }
 

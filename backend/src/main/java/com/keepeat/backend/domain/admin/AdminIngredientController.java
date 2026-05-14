@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.admin;
 
 import com.keepeat.backend.domain.admin.dto.IngredientFormDto;
 import com.keepeat.backend.domain.admin.dto.IngredientListItemDto;
+import com.keepeat.backend.domain.common.enums.IngredientStatus;
 import com.keepeat.backend.domain.common.enums.Metric;
 import com.keepeat.backend.domain.common.enums.StorageType;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
@@ -31,13 +32,16 @@ public class AdminIngredientController {
     @GetMapping
     public String list(@RequestParam(required = false) String keyword,
                        @RequestParam(required = false) Long subCategoryId,
+                       @RequestParam(required = false) IngredientStatus status,
                        @RequestParam(required = false) String msg,
                        @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.ASC) Pageable pageable,
                        Model model) {
-        Page<IngredientListItemDto> page = adminIngredientService.findAll(keyword, subCategoryId, pageable);
+        Page<IngredientListItemDto> page = adminIngredientService.findAll(keyword, subCategoryId, status, pageable);
         model.addAttribute("page", page);
         model.addAttribute("keyword", keyword);
         model.addAttribute("subCategoryId", subCategoryId);
+        model.addAttribute("status", status);
+        model.addAttribute("statusOptions", IngredientStatus.values());
         model.addAttribute("subCategories", adminIngredientService.findAllSubCategoriesForSelect());
         model.addAttribute("msg", msg);
         return "admin/ingredient-list";

@@ -106,4 +106,15 @@ public class AdminIngredientService {
                 .toList();
         ingredientStorageRepository.saveAll(entities);
     }
+
+    @Transactional
+    public void activateIngredientStatus(Long id){
+        Ingredient ingredient = ingredientRepository.findById(id)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.INGREDIENT_NOT_FOUND));
+
+        if(ingredient.getStatus() != IngredientStatus.PENDING)
+            throw new KeepEatException(ErrorCode.INGREDIENT_NOT_PENDING);
+
+        ingredient.activateStatus();
+    }
 }

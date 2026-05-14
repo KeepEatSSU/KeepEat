@@ -111,6 +111,16 @@ public class AdminIngredientController {
         }
     }
 
+    @PostMapping("/{id}/activate")
+    public String activate(@PathVariable Long id){
+        try {
+            adminIngredientService.activateIngredientStatus(id);
+            return "redirect:/admin/ingredients?msg=activated";
+        }catch (KeepEatException e){
+            return "redirect:/admin/ingredients?msg=activated_fail";
+        }
+    }
+
     private void addFormSelectAttributes(Model model) {
         model.addAttribute("subCategories", adminIngredientService.findAllSubCategoriesForSelect());
         model.addAttribute("storageTypes", StorageType.values());

@@ -42,4 +42,8 @@ public class Ingredient {
         this.subCategory = subCategory;
         this.name = name;
     }
+
+    public void activateStatus(){
+        this.status = IngredientStatus.ACTIVE;
+    }
 }

@@ -15,6 +15,8 @@
         <span th:if="${msg == 'updated'}">수정되었습니다.</span>
         <span th:if="${msg == 'activated'}">활성화되었습니다.</span>
         <span th:if="${msg == 'activated_fail'}">활성화에 실패했습니다.</span>
+        <span th:if="${msg == 'replaced'}">식재료가 교체되었습니다.</span>
+        <span th:if="${msg == 'replace_failed'}">교체에 실패했습니다.</span>
     </div>
 
     <form method="get" action="/admin/ingredients" class="row g-2 mb-3">
@@ -55,8 +57,8 @@
                 <th>이름</th>
                 <th>카테고리</th>
                 <th>서브카테고리</th>
-                <th>상태</th>
-                <th style="width: 160px;">작업</th>
+                <th style="width: 100px;">상태</th>
+                <th style="width: 200px;">작업</th>
             </tr>
             </thead>
             <tbody>
@@ -79,6 +81,9 @@
                               onsubmit="return confirm('이 식재료를 활성화하시겠습니까?');">
                             <button type="submit" class="btn btn-sm btn-success">활성화</button>
                         </form>
+                        <a th:if="${item.status.name() == 'PENDING'}"
+                           th:href="@{|/admin/ingredients/${item.id}/replace|}"
+                           class="btn btn-sm btn-warning">교체</a>
                     </div>
                 </td>
             </tr>

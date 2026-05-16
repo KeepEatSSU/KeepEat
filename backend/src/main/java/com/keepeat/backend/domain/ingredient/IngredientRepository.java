@@ -28,4 +28,5 @@ public interface IngredientRepository extends JpaRepository<Ingredient, Long> {
                                     @Param("subCategoryId") Long subCategoryId,
                                     @Param("status") IngredientStatus status,
                                     Pageable pageable);
+
 }

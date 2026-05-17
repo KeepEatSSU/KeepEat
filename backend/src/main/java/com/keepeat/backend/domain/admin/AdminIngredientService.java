@@ -2,12 +2,11 @@ package com.keepeat.backend.domain.admin;
 
 import com.keepeat.backend.domain.admin.dto.IngredientFormDto;
 import com.keepeat.backend.domain.admin.dto.IngredientListItemDto;
+import com.keepeat.backend.domain.common.enums.IngredientStatus;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
-import com.keepeat.backend.domain.ingredient.Ingredient;
-import com.keepeat.backend.domain.ingredient.IngredientRepository;
-import com.keepeat.backend.domain.ingredient.IngredientStorage;
-import com.keepeat.backend.domain.ingredient.IngredientStorageRepository;
+import com.keepeat.backend.domain.ingredient.*;
+import com.keepeat.backend.domain.recipe.repository.RecipeIngredientRepository;
 import com.keepeat.backend.domain.subcategory.SubCategory;
 import com.keepeat.backend.domain.subcategory.SubCategoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -27,10 +26,12 @@ public class AdminIngredientService {
     private final IngredientRepository ingredientRepository;
     private final IngredientStorageRepository ingredientStorageRepository;
     private final SubCategoryRepository subCategoryRepository;
+    private final RecipeIngredientRepository recipeIngredientRepository;
+    private final IngredientAliasRepository ingredientAliasRepository;
 
     @Transactional(readOnly = true)
-    public Page<IngredientListItemDto> findAll(String keyword, Long subCategoryId, Pageable pageable) {
-        return ingredientRepository.searchForAdmin(keyword, subCategoryId, pageable)
+    public Page<IngredientListItemDto> findAll(String keyword, Long subCategoryId, IngredientStatus status, Pageable pageable) {
+        return ingredientRepository.searchForAdmin(keyword, subCategoryId, status, pageable)
                 .map(IngredientListItemDto::from);
     }
 
@@ -104,5 +105,53 @@ public class AdminIngredientService {
                         .build())
                 .toList();
         ingredientStorageRepository.saveAll(entities);
+    }
+
+    @Transactional
+    public void activateIngredientStatus(Long id){
+        Ingredient ingredient = ingredientRepository.findById(id)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.INGREDIENT_NOT_FOUND));
+
+        if(ingredient.getStatus() != IngredientStatus.PENDING)
+            throw new KeepEatException(ErrorCode.INGREDIENT_NOT_PENDING);
+
+        ingredient.activateStatus();
+    }
+
+    @Transactional
+    public void replacePendingIngredient(Long pendingId, Long targetId, boolean addAlias){
+
+        Ingredient pendingIngredient = ingredientRepository.findById(pendingId)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.INGREDIENT_NOT_FOUND));
+
+        Ingredient targetIngredient = ingredientRepository.findById(targetId)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.INGREDIENT_NOT_FOUND));
+
+        if(pendingIngredient.getStatus() != IngredientStatus.PENDING)
+            throw new KeepEatException(ErrorCode.INGREDIENT_NOT_PENDING);
+        if (targetIngredient.getStatus() != IngredientStatus.ACTIVE)
+            throw new KeepEatException(ErrorCode.REPLACE_TARGET_NOT_ACTIVE);
+        if (pendingId.equals(targetId))
+            throw new KeepEatException(ErrorCode.REPLACE_TARGET_SAME);
+
+        recipeIngredientRepository.updateIngredient(pendingId, targetId);
+
+        if(addAlias){
+            IngredientAlias ingredientAlias = new IngredientAlias(targetIngredient, pendingIngredient.getName());
+            ingredientAliasRepository.save(ingredientAlias);
+        }
+
+        ingredientStorageRepository.deleteByIngredientId(pendingId);
+        ingredientRepository.deleteById(pendingId);
+    }
+
+    @Transactional(readOnly = true)
+    public Ingredient findOnePendingIngredient(Long id) {
+        Ingredient ingredient = ingredientRepository.findById(id)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.INGREDIENT_NOT_FOUND));
+        if (ingredient.getStatus() != IngredientStatus.PENDING) {
+            throw new KeepEatException(ErrorCode.INGREDIENT_NOT_PENDING);
+        }
+        return ingredient;
     }
 }

@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.admin.dto;
 
+import com.keepeat.backend.domain.common.enums.IngredientStatus;
 import com.keepeat.backend.domain.ingredient.Ingredient;
 
 public record IngredientListItemDto(
@@ -7,7 +8,8 @@ public record IngredientListItemDto(
         String name,
         Long subCategoryId,
         String subCategoryName,
-        String categoryName
+        String categoryName,
+        IngredientStatus status
 ) {
     public static IngredientListItemDto from(Ingredient ingredient) {
         return new IngredientListItemDto(
@@ -15,7 +17,8 @@ public record IngredientListItemDto(
                 ingredient.getName(),
                 ingredient.getSubCategory().getId(),
                 ingredient.getSubCategory().getName(),
-                ingredient.getSubCategory().getCategory().getName()
+                ingredient.getSubCategory().getCategory().getName(),
+                ingredient.getStatus()
         );
     }
 }

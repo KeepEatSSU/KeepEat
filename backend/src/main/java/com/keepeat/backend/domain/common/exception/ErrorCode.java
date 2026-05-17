@@ -33,7 +33,10 @@ public enum ErrorCode {
 
     // 어드민
     ADMIN_ACCESS_DENIED(HttpStatus.FORBIDDEN, "어드민 권한이 필요합니다."),
-    INGREDIENT_NAME_DUPLICATED(HttpStatus.CONFLICT, "이미 존재하는 식재료입니다.");
+    INGREDIENT_NAME_DUPLICATED(HttpStatus.CONFLICT, "이미 존재하는 식재료입니다."),
+    INGREDIENT_NOT_PENDING(HttpStatus.CONFLICT, "해당 식재료는 PENDING 상태가 아닙니다."),
+    REPLACE_TARGET_NOT_ACTIVE(HttpStatus.CONFLICT, "교체 대상은 ACTIVE 상태의 식재료여야 합니다."),
+    REPLACE_TARGET_SAME(HttpStatus.BAD_REQUEST, "교체 대상은 자기 자신과 같을 수 없습니다.");
 
     private final HttpStatus status;
     private final String message;

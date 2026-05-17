@@ -2,9 +2,11 @@ package com.keepeat.backend.domain.admin;
 
 import com.keepeat.backend.domain.admin.dto.IngredientFormDto;
 import com.keepeat.backend.domain.admin.dto.IngredientListItemDto;
+import com.keepeat.backend.domain.common.enums.IngredientStatus;
 import com.keepeat.backend.domain.common.enums.Metric;
 import com.keepeat.backend.domain.common.enums.StorageType;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
+import com.keepeat.backend.domain.ingredient.Ingredient;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -31,13 +33,16 @@ public class AdminIngredientController {
     @GetMapping
     public String list(@RequestParam(required = false) String keyword,
                        @RequestParam(required = false) Long subCategoryId,
+                       @RequestParam(required = false) IngredientStatus status,
                        @RequestParam(required = false) String msg,
                        @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.ASC) Pageable pageable,
                        Model model) {
-        Page<IngredientListItemDto> page = adminIngredientService.findAll(keyword, subCategoryId, pageable);
+        Page<IngredientListItemDto> page = adminIngredientService.findAll(keyword, subCategoryId, status, pageable);
         model.addAttribute("page", page);
         model.addAttribute("keyword", keyword);
         model.addAttribute("subCategoryId", subCategoryId);
+        model.addAttribute("status", status);
+        model.addAttribute("statusOptions", IngredientStatus.values());
         model.addAttribute("subCategories", adminIngredientService.findAllSubCategoriesForSelect());
         model.addAttribute("msg", msg);
         return "admin/ingredient-list";
@@ -104,6 +109,50 @@ public class AdminIngredientController {
             model.addAttribute("mode", "edit");
             model.addAttribute("ingredientId", id);
             return "admin/ingredient-form";
+        }
+    }
+
+    @PostMapping("/{id}/activate")
+    public String activate(@PathVariable Long id){
+        try {
+            adminIngredientService.activateIngredientStatus(id);
+            return "redirect:/admin/ingredients?msg=activated";
+        }catch (KeepEatException e){
+            return "redirect:/admin/ingredients?msg=activated_fail";
+        }
+    }
+
+    @GetMapping("/{id}/replace")
+    public String replaceForm(@PathVariable Long id,
+                              @RequestParam(required = false) String keyword,
+                              @RequestParam(required = false) Long subCategoryId,
+                              @PageableDefault(size = 20, sort = "id", direction = Sort.Direction.ASC) Pageable pageable,
+                              Model model) {
+        try {
+            Ingredient pending = adminIngredientService.findOnePendingIngredient(id);
+            Page<IngredientListItemDto> page = adminIngredientService.findAll(
+                    keyword, subCategoryId, IngredientStatus.ACTIVE, pageable);
+
+            model.addAttribute("pending", pending);
+            model.addAttribute("page", page);
+            model.addAttribute("keyword", keyword);
+            model.addAttribute("subCategoryId", subCategoryId);
+            model.addAttribute("subCategories", adminIngredientService.findAllSubCategoriesForSelect());
+            return "admin/ingredient-replace-form";
+        } catch (KeepEatException e) {
+            return "redirect:/admin/ingredients?msg=replace_failed";
+        }
+    }
+
+    @PostMapping("/{id}/replace")
+    public String replace(@PathVariable Long id,
+                          @RequestParam Long targetId,
+                          @RequestParam(required = false, defaultValue = "false") boolean addAlias) {
+        try {
+            adminIngredientService.replacePendingIngredient(id, targetId, addAlias);
+            return "redirect:/admin/ingredients?msg=replaced";
+        } catch (KeepEatException e) {
+            return "redirect:/admin/ingredients?msg=replace_failed";
         }
     }
 

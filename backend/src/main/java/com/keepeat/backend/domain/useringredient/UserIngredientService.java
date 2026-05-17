@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.useringredient;
 
+import com.keepeat.backend.domain.common.enums.IngredientStatus;
 import com.keepeat.backend.domain.common.enums.StorageType;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
@@ -56,6 +57,11 @@ public class UserIngredientService {
         List<UserIngredient> entities = items.stream().map(item -> {
             Ingredient ingredient = ingredientRepository.findById(item.ingredientId())
                     .orElseThrow(() -> new KeepEatException(ErrorCode.INGREDIENT_NOT_FOUND));
+
+            // PENDING 상태의 식재료는 식재료 등록 대상이 아님
+            if(ingredient.getStatus() != IngredientStatus.ACTIVE){
+                throw new KeepEatException(ErrorCode.INGREDIENT_NOT_FOUND);
+            }
 
             LocalDate expiryDate = item.expiryDate();
             if (expiryDate == null) {

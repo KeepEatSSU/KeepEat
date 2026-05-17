@@ -13,19 +13,32 @@
     <div th:if="${msg}" class="alert alert-success" role="alert">
         <span th:if="${msg == 'created'}">생성되었습니다.</span>
         <span th:if="${msg == 'updated'}">수정되었습니다.</span>
+        <span th:if="${msg == 'activated'}">활성화되었습니다.</span>
+        <span th:if="${msg == 'activated_fail'}">활성화에 실패했습니다.</span>
+        <span th:if="${msg == 'replaced'}">식재료가 교체되었습니다.</span>
+        <span th:if="${msg == 'replace_failed'}">교체에 실패했습니다.</span>
     </div>
 
     <form method="get" action="/admin/ingredients" class="row g-2 mb-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <input type="text" name="keyword" th:value="${keyword}" class="form-control" placeholder="식재료명 검색">
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <select name="subCategoryId" class="form-select">
                 <option value="">전체 서브카테고리</option>
                 <option th:each="sc : ${subCategories}"
                         th:value="${sc.id}"
                         th:selected="${subCategoryId != null and subCategoryId == sc.id}"
                         th:text="|${sc.category.name} > ${sc.name}|"></option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <select name="status" class="form-select">
+                <option value="">전체 상태</option>
+                <option th:each="s : ${statusOptions}"
+                        th:value="${s}"
+                        th:selected="${status != null and status == s}"
+                        th:text="${s}"></option>
             </select>
         </div>
         <div class="col-md-2">
@@ -44,7 +57,8 @@
                 <th>이름</th>
                 <th>카테고리</th>
                 <th>서브카테고리</th>
-                <th style="width: 120px;">작업</th>
+                <th style="width: 100px;">상태</th>
+                <th style="width: 200px;">작업</th>
             </tr>
             </thead>
             <tbody>
@@ -54,7 +68,23 @@
                 <td th:text="${item.categoryName}"></td>
                 <td th:text="${item.subCategoryName}"></td>
                 <td>
-                    <a th:href="@{|/admin/ingredients/${item.id}/edit|}" class="btn btn-sm btn-outline-primary">수정</a>
+                    <span th:if="${item.status.name() == 'ACTIVE'}" class="badge bg-success">ACTIVE</span>
+                    <span th:if="${item.status.name() == 'PENDING'}" class="badge bg-warning text-dark">PENDING</span>
+                </td>
+                <td>
+                    <div class="d-flex gap-1">
+                        <a th:href="@{|/admin/ingredients/${item.id}/edit|}" class="btn btn-sm btn-outline-primary">수정</a>
+                        <form th:if="${item.status.name() == 'PENDING'}"
+                              th:action="@{|/admin/ingredients/${item.id}/activate|}"
+                              method="post"
+                              style="display:inline;"
+                              onsubmit="return confirm('이 식재료를 활성화하시겠습니까?');">
+                            <button type="submit" class="btn btn-sm btn-success">활성화</button>
+                        </form>
+                        <a th:if="${item.status.name() == 'PENDING'}"
+                           th:href="@{|/admin/ingredients/${item.id}/replace|}"
+                           class="btn btn-sm btn-warning">교체</a>
+                    </div>
                 </td>
             </tr>
             <tr th:if="${page.empty}">
@@ -75,7 +105,7 @@
             </li>
             <li class="page-item" th:classappend="${page.last} ? 'disabled'">
                 <a class="page-link"
-                   th:href="@{/admin/ingredients(page=${page.number + 1}, size=${page.size}, keyword=${keyword}, subCategoryId=${subCategoryId})}">다음</a>
+                   th:href="@{/admin/ingredients(page=${page.number + 1}, size=${page.size}, keyword=${keyword}, subCategoryId=${subCategoryId}, status=${status})}">다음</a>
             </li>
         </ul>
     </nav>

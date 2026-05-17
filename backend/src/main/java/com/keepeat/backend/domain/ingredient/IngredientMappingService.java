@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.ingredient;
 
 import com.keepeat.backend.domain.category.Category;
 import com.keepeat.backend.domain.category.CategoryRepository;
+import com.keepeat.backend.domain.common.enums.IngredientStatus;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.ingredient.dto.IngredientAiResponseDto;
@@ -34,6 +35,7 @@ public class IngredientMappingService {
     private final SubCategoryRepository subCategoryRepository;
     private final CategoryRepository categoryRepository;
     private final IngredientStorageRepository ingredientStorageRepository;
+    private final IngredientAliasRepository ingredientAliasRepository;
     private final TransactionTemplate transactionTemplate;
 
     public IngredientMappingService(ChatClient.Builder chatClientBuilder,
@@ -41,11 +43,13 @@ public class IngredientMappingService {
                                     SubCategoryRepository subCategoryRepository,
                                     CategoryRepository categoryRepository,
                                     IngredientStorageRepository ingredientStorageRepository,
+                                    IngredientAliasRepository ingredientAliasRepository,
                                     TransactionTemplate transactionTemplate)
     {
         this.ingredientRepository = ingredientRepository;
         this.subCategoryRepository = subCategoryRepository;
         this.ingredientStorageRepository = ingredientStorageRepository;
+        this.ingredientAliasRepository = ingredientAliasRepository;
         this.transactionTemplate = transactionTemplate;
 
         chatClient = chatClientBuilder
@@ -99,15 +103,32 @@ public class IngredientMappingService {
 
     public Map<String, Ingredient> resolveIngredients(List<String> ingredientNames){
 
-        List<String> uniqueIngredientNames = ingredientNames.stream().distinct().toList();
-
-        List<Ingredient> foundIngredients = ingredientRepository.findByNameIn(uniqueIngredientNames);
-
         Map<String, Ingredient> resultMap = new HashMap<>();
 
-        for(Ingredient i : foundIngredients){
+        List<String> uniqueIngredientNames = ingredientNames.stream().distinct().toList();
+
+        List<Ingredient> foundIngredientsByName = ingredientRepository.findByNameIn(uniqueIngredientNames);
+
+        for(Ingredient i : foundIngredientsByName){
             resultMap.put(i.getName(), i);
         }
+
+        List<String> notFoundIngredientByName = uniqueIngredientNames.stream()
+                .filter(name -> !resultMap.containsKey(name))
+                .toList();
+
+        if(!notFoundIngredientByName.isEmpty()){
+            List<IngredientAlias> ingredientAliases = ingredientAliasRepository.findByAliasNameIn(notFoundIngredientByName);
+
+            if (!ingredientAliases.isEmpty()) {
+                log.info("별칭으로 매칭 성공: {}", ingredientAliases.stream().map(IngredientAlias::getAliasName).toList());
+            }
+
+            for(IngredientAlias ingredientAlias : ingredientAliases){
+                resultMap.put(ingredientAlias.getAliasName(), ingredientAlias.getIngredient());
+            }
+        }
+
 
         List<String> notFoundIngredientNames = uniqueIngredientNames.stream()
                 .filter(name -> !resultMap.containsKey(name))
@@ -191,6 +212,7 @@ public class IngredientMappingService {
                          Ingredient.builder()
                                  .name(info.ingredientName())
                                  .subCategory(subCategory)
+                                 .status(IngredientStatus.PENDING)
                                  .build()
                  );
 
@@ -211,6 +233,7 @@ public class IngredientMappingService {
              return createdIngredients;
          });
     }
+
 
 
     private void validateAiResponse(IngredientAiResponseDto response) {

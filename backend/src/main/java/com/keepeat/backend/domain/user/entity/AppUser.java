@@ -3,11 +3,17 @@ package com.keepeat.backend.domain.user.entity;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import lombok.AccessLevel;
+import org.hibernate.annotations.SQLDelete;
+import org.hibernate.annotations.SQLRestriction;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "app_User")
 @Getter
-@NoArgsConstructor
+@NoArgsConstructor(access = AccessLevel.PROTECTED)
+@SQLDelete(sql = "UPDATE app_user SET deleted_at = NOW() WHERE id = ?")
+@SQLRestriction("deleted_at IS NULL")
 public class AppUser {
 
     @Id
@@ -36,7 +42,6 @@ public class AppUser {
     // 알람 수신 동의 여부
     @Column(nullable = false)
     private boolean isNotificationEnabled = true; // 기본값은 알림 켜짐(true)
-
 
     // 토큰 갱신을 위한 메서드
     public void updateRefreshToken(String refreshToken) {
@@ -68,7 +73,13 @@ public class AppUser {
     }
 
     // 알림 설정 토글 메서드
+    private LocalDateTime deletedAt;
+
     public void toggleNotification(boolean status) {
         this.isNotificationEnabled = status;
+    }
+
+    public void updatePassword(String newPassword) {
+        this.password = newPassword;
     }
 }

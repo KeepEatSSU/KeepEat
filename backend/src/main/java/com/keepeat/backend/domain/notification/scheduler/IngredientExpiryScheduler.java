@@ -8,6 +8,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -29,7 +31,7 @@ public class IngredientExpiryScheduler {
         LocalDate targetDate = LocalDate.now().plusDays(3);
 
         // 소비기한이 딱 3일 남은 모든 식재료를 DB에서 찾기
-        List<UserIngredient> expiringList = userIngredientRepository.findAllByExpiryDate(targetDate);
+        List<UserIngredient> expiringList = userIngredientRepository.findAllByExpiryDateAndUserNotDeleted(targetDate);
 
         // 찾은 식재료들의 주인(User)에게 각각 알림 쏘기
         for (UserIngredient item : expiringList) {

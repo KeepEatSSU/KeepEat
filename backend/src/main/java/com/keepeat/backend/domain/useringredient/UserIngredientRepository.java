@@ -39,5 +39,6 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
     Optional<UserIngredient> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
     // 특정 날짜(예: 3일 뒤)가 소비기한인 식재료들을 모두 찾습니다.
-    List<UserIngredient> findAllByExpiryDate(LocalDate expiryDate);
+    @Query("SELECT ui FROM UserIngredient ui JOIN AppUser u ON ui.userId = u.id WHERE ui.expiryDate = :expiryDate AND u.deletedAt IS NULL")
+    List<UserIngredient> findAllByExpiryDateAndUserNotDeleted(@Param("expiryDate") LocalDate expiryDate);
 }

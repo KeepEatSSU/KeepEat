@@ -1,6 +1,7 @@
 package com.keepeat.backend.domain.notification.controller;
 
 import com.keepeat.backend.domain.notification.dto.DeviceTokenRequest;
+import com.keepeat.backend.domain.notification.dto.NotificationPageResponse;
 import com.keepeat.backend.domain.notification.dto.NotificationResponse;
 import com.keepeat.backend.domain.notification.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -32,10 +33,18 @@ public class NotificationController {
         return ResponseEntity.ok("기기 토큰이 성공적으로 등록되었습니다.");
     }
 
-    @Operation(summary = "알림 목록 조회", description = "현재 사용자의 모든 알림 히스토리를 최신순으로 가져옵니다.")
+    @Operation(summary = "알림 목록 조회 (무한 스크롤)", description = "커서 기반 페이징을 통해 유저의 알림 목록을 조회합니다.")
     @GetMapping
-    public ResponseEntity<List<NotificationResponse>> getNotifications(@AuthenticationPrincipal Long userId) {
-        return ResponseEntity.ok(notificationService.getNotifications(userId));
+    public ResponseEntity<com.keepeat.backend.domain.notification.dto.NotificationPageResponse> getNotifications(
+            @AuthenticationPrincipal Long userId,
+            // 프론트에서 넘겨줄 커서와 사이즈를 받도록 파라미터 추가
+            @RequestParam(required = false) Long cursor,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        com.keepeat.backend.domain.notification.dto.NotificationPageResponse response =
+                notificationService.getNotifications(userId, cursor, size);
+
+        return ResponseEntity.ok(response);
     }
 
     @Operation(summary = "알림 읽음 처리", description = "특정 알림을 읽음 상태로 변경합니다.")
@@ -64,5 +73,13 @@ public class NotificationController {
 
         // 간단한 JSON 형태로 응답하기 위해 Map 객체 사용
         return ResponseEntity.ok(Map.of("unreadCount", count));
+    }
+
+    @Operation(summary = "모든 알림 읽음 처리", description = "사용자의 읽지 않은 모든 알림을 한 번에 읽음 상태로 변경합니다.")
+    @PatchMapping("/read-all")
+    public ResponseEntity<Void> markAllAsRead(@AuthenticationPrincipal Long userId) {
+
+        notificationService.markAllAsRead(userId);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.notification.service;
 
+import com.keepeat.backend.domain.notification.dto.NotificationPageResponse;
 import com.keepeat.backend.domain.notification.dto.NotificationResponse;
 import com.keepeat.backend.domain.notification.dto.PushSendRequest;
 import com.keepeat.backend.domain.notification.entity.DeviceToken;
@@ -14,6 +15,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import java.util.List;
 
 @Slf4j
@@ -61,11 +64,34 @@ public class NotificationService {
     }
 
     @Transactional(readOnly = true)
-    public List<NotificationResponse> getNotifications(Long userId) {
-        return notificationRepository.findAllByUserIdOrderByCreatedAtDesc(userId)
-                .stream()
+    public NotificationPageResponse getNotifications(Long userId, Long cursor, int size) {
+
+        // 프론트에서 요구한 size보다 1개 더 많이 조회
+        Pageable pageable = PageRequest.of(0, size + 1);
+
+        // Repository에서 커서 기반으로 데이터 조회 (아까 만든 쿼리 메서드 호출)
+        List<Notification> notifications = notificationRepository.findNotificationsByCursor(userId, cursor, pageable);
+
+        // 다음 페이지 존재 여부 확인
+        boolean hasNext = false;
+        if (notifications.size() > size) {
+            hasNext = true;
+            notifications.remove(size); // 프론트에게는 원래 요청한 개수(size)만큼만 잘라서 줘야 하므로 마지막 1개는 뺌
+        }
+
+        // 엔티티를 DTO로 변환
+        List<NotificationResponse> notificationResponses = notifications.stream()
+                // .map(n -> new NotificationResponse(n.getId(), n.getTitle(), ...)) // DTO 생성 로직에 맞게 수정하세요!
                 .map(NotificationResponse::from)
                 .toList();
+
+        // 다음 커서 값 계산 (마지막 알림의 ID)
+        Long nextCursor = null;
+        if (hasNext && !notificationResponses.isEmpty()) {
+            nextCursor = notificationResponses.get(notificationResponses.size() - 1).id(); // DTO의 id 필드
+        }
+
+        return new NotificationPageResponse(notificationResponses, hasNext, nextCursor);
     }
 
     @Transactional
@@ -89,5 +115,12 @@ public class NotificationService {
     @Transactional(readOnly = true)
     public int getUnreadCount(Long userId) {
         return notificationRepository.countByUserIdAndIsReadFalse(userId);
+    }
+
+    @Transactional
+    public void markAllAsRead(Long userId) {
+        // 벌크 연산 쿼리 실행 (업데이트된 알림 개수를 반환)
+        int updatedCount = notificationRepository.markAllAsReadByUserId(userId);
+        log.info("유저 {}의 알림 {}건이 모두 읽음 처리되었습니다.", userId, updatedCount);
     }
 }

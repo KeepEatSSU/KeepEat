@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="ko">
+<head th:replace="~{admin/layout :: head('식재료 교체')}"></head>
+<body class="bg-light">
+<nav th:replace="~{admin/layout :: nav}"></nav>
+
+<div class="container my-4">
+
+    <h3 class="mb-3">식재료 교체</h3>
+
+    <!-- 교체 대상 정보 -->
+    <div class="card card-body mb-3 bg-warning-subtle">
+        <strong>교체 대상 (PENDING)</strong>
+        <div>이름: <span th:text="${pending.name}"></span></div>
+        <div class="text-muted small">
+            카테고리:
+            <span th:text="${pending.subCategory.category.name}"></span> &gt;
+            <span th:text="${pending.subCategory.name}"></span>
+        </div>
+    </div>
+
+    <!-- 검색 form (GET) -->
+    <form th:action="@{|/admin/ingredients/${pending.id}/replace|}" method="get" class="row g-2 mb-3">
+        <div class="col-md-4">
+            <input type="text" name="keyword" th:value="${keyword}"
+                   class="form-control" placeholder="식재료명 검색">
+        </div>
+        <div class="col-md-4">
+            <select name="subCategoryId" class="form-select">
+                <option value="">전체 서브카테고리</option>
+                <option th:each="sc : ${subCategories}"
+                        th:value="${sc.id}"
+                        th:selected="${subCategoryId != null and subCategoryId == sc.id}"
+                        th:text="|${sc.category.name} > ${sc.name}|"></option>
+            </select>
+        </div>
+        <div class="col-md-2">
+            <button type="submit" class="btn btn-secondary w-100">검색</button>
+        </div>
+        <div class="col-md-2">
+            <a th:href="@{|/admin/ingredients/${pending.id}/replace|}"
+               class="btn btn-outline-secondary w-100">초기화</a>
+        </div>
+    </form>
+
+    <!-- 실행 form (POST) -->
+    <form id="replaceForm"
+          th:action="@{|/admin/ingredients/${pending.id}/replace|}"
+          method="post"
+          th:data-pending-name="${pending.name}">
+
+        <!-- 별칭 체크박스 — alert 박스로 강조, 위쪽 -->
+        <div class="alert alert-info">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" name="addAlias"
+                       id="addAlias" value="true" checked>
+                <label class="form-check-label fw-bold" for="addAlias">
+                    별칭으로 등록
+                </label>
+                <div class="text-muted small mt-1" id="aliasDescription">
+                    교체할 식재료를 선택하면 어떤 별칭이 등록될지 표시됩니다.
+                </div>
+            </div>
+        </div>
+
+        <!-- 라디오 테이블 -->
+        <div class="card">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                <tr>
+                    <th style="width: 50px;"></th>
+                    <th>이름</th>
+                    <th>카테고리</th>
+                    <th>서브카테고리</th>
+                </tr>
+                </thead>
+                <tbody>
+                <tr th:each="item : ${page.content}">
+                    <td>
+                        <input class="form-check-input" type="radio" name="targetId"
+                               th:value="${item.id}" required>
+                    </td>
+                    <td th:text="${item.name}"></td>
+                    <td th:text="${item.categoryName}"></td>
+                    <td th:text="${item.subCategoryName}"></td>
+                </tr>
+                <tr th:if="${page.empty}">
+                    <td colspan="4" class="text-center text-muted py-4">검색 결과가 없습니다.</td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <!-- 페이지네이션 -->
+        <nav th:if="${page.totalPages > 0}" class="mt-3">
+            <ul class="pagination justify-content-center">
+                <li class="page-item" th:classappend="${page.first} ? 'disabled'">
+                    <a class="page-link"
+                       th:href="@{|/admin/ingredients/${pending.id}/replace|(page=${page.number - 1}, size=${page.size}, keyword=${keyword}, subCategoryId=${subCategoryId})}">이전</a>
+                </li>
+                <li class="page-item disabled">
+                    <span class="page-link" th:text="|${page.number + 1} / ${page.totalPages}|"></span>
+                </li>
+                <li class="page-item" th:classappend="${page.last} ? 'disabled'">
+                    <a class="page-link"
+                       th:href="@{|/admin/ingredients/${pending.id}/replace|(page=${page.number + 1}, size=${page.size}, keyword=${keyword}, subCategoryId=${subCategoryId})}">다음</a>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- 실행 버튼 -->
+        <div class="mt-4 d-flex gap-2">
+            <button type="button" class="btn btn-primary" id="replaceSubmitBtn">교체 실행</button>
+            <a href="/admin/ingredients" class="btn btn-outline-secondary">취소</a>
+        </div>
+    </form>
+</div>
+
+<!-- 확인 모달 -->
+<div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">식재료 교체 확인</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2">다음 작업을 진행합니다:</p>
+                <div class="card card-body bg-light mb-3">
+                    <div class="mb-2">
+                        <strong>교체:</strong>
+                        <span class="badge bg-warning text-dark me-2" th:text="${pending.name}"></span>
+                        <span class="text-muted">→</span>
+                        <span class="badge bg-success ms-2" id="modalTargetName"></span>
+                    </div>
+                    <div>
+                        <strong>별칭 등록:</strong>
+                        <span id="modalAliasInfo"></span>
+                    </div>
+                </div>
+                <p class="text-danger small mb-0">
+                    ⚠ 이 작업은 되돌릴 수 없습니다.
+                </p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary" id="confirmReplaceBtn">교체 실행</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="alertModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">알림</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="닫기"></button>
+            </div>
+            <div class="modal-body">
+                교체할 식재료를 선택해주세요.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">확인</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const form = document.getElementById('replaceForm');
+        const submitBtn = document.getElementById('replaceSubmitBtn');
+        const confirmBtn = document.getElementById('confirmReplaceBtn');
+        const modalTargetName = document.getElementById('modalTargetName');
+        const modalAliasInfo = document.getElementById('modalAliasInfo');
+        const aliasDescription = document.getElementById('aliasDescription');
+        const pendingName = form.dataset.pendingName;
+
+        // 라디오 선택 시 별칭 설명 동적 갱신
+        form.querySelectorAll('input[name="targetId"]').forEach(function(radio) {
+            radio.addEventListener('change', function() {
+                const targetName = this.closest('tr').querySelector('td:nth-child(2)').textContent.trim();
+                aliasDescription.innerHTML =
+                    `"<strong>${pendingName}</strong>"을(를) "<strong>${targetName}</strong>"의 별칭으로 등록합니다.`;
+            });
+        });
+
+        // [교체 실행] 클릭 — alert 대신 모달
+        submitBtn.addEventListener('click', function() {
+            const selectedRadio = form.querySelector('input[name="targetId"]:checked');
+            if (!selectedRadio) {
+                const alertModal = new bootstrap.Modal(document.getElementById('alertModal'));
+                alertModal.show();
+                return;
+            }
+
+            const targetName = selectedRadio.closest('tr').querySelector('td:nth-child(2)').textContent.trim();
+            const addAlias = form.querySelector('input[name="addAlias"]').checked;
+
+            modalTargetName.textContent = targetName;
+            modalAliasInfo.innerHTML = addAlias
+                ? `<span class="text-success">"${pendingName}" 별칭으로 등록</span>`
+                : `<span class="text-muted">등록하지 않음</span>`;
+
+            const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
+            modal.show();
+        });
+
+        confirmBtn.addEventListener('click', function() {
+            form.submit();
+        });
+    })();
+</script>
+
+</body>
+</html>

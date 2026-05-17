@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.security;
 
+import com.keepeat.backend.domain.user.entity.Role;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
@@ -26,21 +27,22 @@ public class JwtProvider {
         this.refreshTokenValidityTime = refreshTokenValidityTime;
     }
 
-    public String createAccessToken(String email, Long id) {
-        return createToken(email, id, accessTokenValidityTime);
+    public String createAccessToken(String email, Long id, Role role) {
+        return createToken(email, id, role, accessTokenValidityTime);
     }
 
-    public String createRefreshToken(String email, Long id) {
-        return createToken(email, id, refreshTokenValidityTime);
+    public String createRefreshToken(String email, Long id, Role role) {
+        return createToken(email, id, role, refreshTokenValidityTime);
     }
 
-    private String createToken(String email, Long id, long validityTime) {
+    private String createToken(String email, Long id, Role role, long validityTime) {
         Date now = new Date();
         Date validity = new Date(now.getTime() + validityTime);
 
         return Jwts.builder()
                 .subject(email)
                 .claim("id", id)
+                .claim("role", role.name())
                 .issuedAt(now)
                 .expiration(validity)
                 .signWith(key)
@@ -77,5 +79,16 @@ public class JwtProvider {
                 .parseSignedClaims(token)
                 .getPayload()
                 .get("id", Long.class); // claim에서 'id'라는 이름으로 넣은 Long 값을 꺼냄
+    }
+
+    // role claim이 없는 구버전 토큰은 ROLE_USER로 폴백 — 기존 발급 토큰 호환
+    public String getRole(String token) {
+        String role = Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload()
+                .get("role", String.class);
+        return role != null ? role : Role.ROLE_USER.name();
     }
 }

@@ -178,7 +178,11 @@ public class RecipeService {
         for(RecipeIngredient ingredient : recipe.getRequiredIngredients()){
             boolean isOwned = userIngredientSet.contains(ingredient.getIngredient().getId());
             recipeIngredientList.add(new RecipeIngredientDetailDto(
-                    ingredient.getIngredient().getName(), ingredient.getAmount(), isOwned));
+                    ingredient.getIngredient().getName(),
+                    ingredient.getAmount(),
+                    isOwned,
+                    ingredient.getIngredient().getStatus()
+            ));
         }
 
         RecipeDetailResponseDto response = RecipeDetailResponseDto.builder()

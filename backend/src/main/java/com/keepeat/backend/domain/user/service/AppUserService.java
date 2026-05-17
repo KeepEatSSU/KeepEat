@@ -74,8 +74,8 @@ public class AppUserService {
         }
 
         // 비밀번호까지 맞다면, 토큰 2개 발급
-        String accessToken = jwtProvider.createAccessToken(user.getEmail(), user.getId());
-        String rawRefreshToken = jwtProvider.createRefreshToken(user.getEmail(), user.getId());
+        String accessToken = jwtProvider.createAccessToken(user.getEmail(), user.getId(), user.getRole());
+        String rawRefreshToken = jwtProvider.createRefreshToken(user.getEmail(), user.getId(), user.getRole());
 
         String hashedRefreshToken = hashToken(rawRefreshToken);
         user.updateRefreshToken(hashedRefreshToken);
@@ -121,8 +121,8 @@ public class AppUserService {
         }
 
         // 검증을 모두 통과했으니 새로운 토큰 세트를 발급
-        String newAccessToken = jwtProvider.createAccessToken(email, user.getId());
-        String newRawRefreshToken = jwtProvider.createRefreshToken(email, user.getId());
+        String newAccessToken = jwtProvider.createAccessToken(email, user.getId(), user.getRole());
+        String newRawRefreshToken = jwtProvider.createRefreshToken(email, user.getId(), user.getRole());
 
         // 새로 발급한 Refresh Token도 암호화해서 DB를 업데이트 (Token Rotation)
         String newHashedRefreshToken = hashToken(newRawRefreshToken);

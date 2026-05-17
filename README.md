@@ -5,7 +5,7 @@
 ## 1. 필수 사전 설치
 * Git
 * Docker Desktop (로컬 DB 실행용)
-* IntelliJ IDEA 
+* IntelliJ IDEA
 
 ## 2. 프로젝트 클론 및 브랜치 설정
 본 프로젝트의 개발 브랜치는 `dev`이며, 백엔드 작업은 `BE` 브랜치에서 진행합니다.
@@ -26,10 +26,10 @@ git switch BE
 ## 3. Java SDK 및 IDE 설정
 * Java 버전: Eclipse Temurin 21.0.10
 * 설정 방법 (IntelliJ):
-  1. 프로젝트를 IntelliJ로 엽니다.
-  2. File > Project Structure (단축키: Cmd/Ctrl + ;)로 이동합니다.
-  3. Project 탭에서 SDK를 설정합니다.
-  4. 목록에 없다면 Add SDK > Download JDK를 클릭하고, Version은 21, Vendor는 Eclipse Temurin을 선택하여 다운로드 및 적용합니다.
+    1. 프로젝트를 IntelliJ로 엽니다.
+    2. File > Project Structure (단축키: Cmd/Ctrl + ;)로 이동합니다.
+    3. Project 탭에서 SDK를 설정합니다.
+    4. 목록에 없다면 Add SDK > Download JDK를 클릭하고, Version은 21, Vendor는 Eclipse Temurin을 선택하여 다운로드 및 적용합니다.
 
 ## 4. 로컬 DB 세팅 및 환경변수 설정
 보안을 위해 `.env` 파일은 레포지토리에 포함하지 않으며, 로컬 환경에서 직접 생성해야 합니다.
@@ -69,6 +69,6 @@ IntelliJ에서 BackendApplication을 실행하여 콘솔에 에러 로그 없이
   # 예: git switch -c feature/BE/login
   ```
 
-* 원활한 프로젝트 진행과 일관성 있는 코드 품질을 위해 자체적인 컨벤션을 지키고자 합니다. 
-자세한 규칙은 아래 노션 워크스페이스에서 확인하실 수 있습니다.
+* 원활한 프로젝트 진행과 일관성 있는 코드 품질을 위해 자체적인 컨벤션을 지키고자 합니다.
+  자세한 규칙은 아래 노션 워크스페이스에서 확인하실 수 있습니다.
 - [Git 및 코드 컨벤션 (Notion)](https://www.notion.so/git-convention-1eef5f52a1d783eda7f381b7ec9d6e08?source=copy_link)

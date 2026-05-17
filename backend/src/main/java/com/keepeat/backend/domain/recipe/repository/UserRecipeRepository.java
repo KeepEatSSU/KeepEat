@@ -10,6 +10,8 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 
+import java.time.LocalDate;
+
 public interface UserRecipeRepository extends JpaRepository<UserRecipe, Long> {
     @Modifying
     @Query("DELETE FROM UserRecipe ur WHERE ur.appUser.id = :userId AND ur.recipe.id IN :recipeIds")
@@ -29,4 +31,8 @@ public interface UserRecipeRepository extends JpaRepository<UserRecipe, Long> {
 
     @Query("SELECT COUNT(ur) FROM UserRecipe ur WHERE ur.appUser.id = :userId AND ur.recipe.id IN :recipeIds")
     long countByAppUserIdAndRecipeIds(@Param("userId") Long userId, @Param("recipeIds") List<Long> recipeIds);
+
+
+    // 특정 유저가 '특정 날짜 이후'로 요리를 몇 번 했는지 세어주는 쿼리
+    int countByAppUser_IdAndCreatedAtAfter(Long userId, LocalDate date);
 }

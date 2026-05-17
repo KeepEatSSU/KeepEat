@@ -7,6 +7,8 @@ import org.springframework.data.repository.query.Param;
 import java.util.List;
 import java.util.Optional;
 
+import java.time.LocalDate;
+
 public interface UserIngredientRepository extends JpaRepository<UserIngredient, Long> {
 
     @Query("SELECT ui FROM UserIngredient ui " +
@@ -35,4 +37,8 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
             "JOIN FETCH sc.category c " +
             "WHERE ui.id = :id AND ui.userId = :userId")
     Optional<UserIngredient> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
+
+    // 특정 날짜(예: 3일 뒤)가 소비기한인 식재료들을 모두 찾습니다.
+    @Query("SELECT ui FROM UserIngredient ui JOIN AppUser u ON ui.userId = u.id WHERE ui.expiryDate = :expiryDate AND u.deletedAt IS NULL")
+    List<UserIngredient> findAllByExpiryDateAndUserNotDeleted(@Param("expiryDate") LocalDate expiryDate);
 }

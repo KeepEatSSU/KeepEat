@@ -25,12 +25,15 @@ public class RecipeAiService {
 
     private final ChatClient chatClient;
     private final UserIngredientRepository userIngredientRepository;
+    private final com.keepeat.backend.domain.notification.service.NotificationService notificationService;
 
 
     public RecipeAiService(ChatClient.Builder chatClientBuilder,
-                         UserIngredientRepository userIngredientRepository
+                         UserIngredientRepository userIngredientRepository,
+                           com.keepeat.backend.domain.notification.service.NotificationService notificationService
     ) {
         this.userIngredientRepository = userIngredientRepository;
+        this.notificationService = notificationService;
         this.chatClient = chatClientBuilder
                 .defaultOptions(GoogleGenAiChatOptions.builder()
                         .temperature(0.2)
@@ -131,6 +134,18 @@ public class RecipeAiService {
             throw new KeepEatException(ErrorCode.AI_RESPONSE_PARSE_FAILURE);
         }
 
+
+        // 새롭게 추가할 알림 발송 코드
+        String title = "🍳 AI 레시피 생성 완료!";
+        String body = "가지고 계신 식재료로 맛있는 요리를 만들어 보세요.";
+
+        notificationService.sendNotification(
+                userId,
+                title,
+                body,
+                com.keepeat.backend.domain.notification.entity.NotificationType.RECIPE_READY,
+                null
+        );
 
         return responseFromAi;
     }

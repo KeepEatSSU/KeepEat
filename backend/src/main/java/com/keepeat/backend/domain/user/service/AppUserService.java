@@ -10,12 +10,16 @@ import com.keepeat.backend.domain.security.JwtProvider;
 import com.keepeat.backend.domain.user.dto.*;
 import com.keepeat.backend.domain.user.entity.AppUser;
 import com.keepeat.backend.domain.user.entity.Role;
+import com.keepeat.backend.domain.user.entity.EmailAuth;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
+import com.keepeat.backend.domain.user.repository.EmailAuthRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AppUserService {
@@ -24,9 +28,17 @@ public class AppUserService {
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
     private final UserRecipeRepository userRecipeRepository;
+    private final EmailAuthRepository emailAuthRepository;
 
     @Transactional
     public Long signUp(SignUpRequest request) {
+
+        EmailAuth emailAuth = emailAuthRepository.findByEmail(request.email())
+                .orElseThrow(() -> new IllegalArgumentException("이메일 인증을 진행해 주세요."));
+
+        if (!emailAuth.isVerified()) {
+            throw new IllegalArgumentException("이메일 인증이 완료되지 않았습니다.");
+        }
 
         // 이메일 중복 검사
         if (appUserRepository.existsByEmail(request.email())) {
@@ -44,6 +56,7 @@ public class AppUserService {
                 Role.ROLE_USER // 가입하는 사람은 기본적으로 일반 유저(USER) 권한
         );
 
+        emailAuthRepository.delete(emailAuth);
         // DB에 저장하고, 저장된 유저의 고유 ID(PK)를 반환
         AppUser savedUser = appUserRepository.save(newUser);
         return savedUser.getId();
@@ -138,12 +151,64 @@ public class AppUserService {
     @Transactional
     public void deleteUser(Long userId) {
 
-        // 모든 레시피 삭제 
-        userRecipeRepository.deleteAllByAppUserId(userId);
-
         // 유저 삭제
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
         appUserRepository.delete(user);
     }
+
+    @Transactional
+    public boolean toggleNotification(Long userId) {
+        AppUser user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+
+        // 현재 상태의 반대로 뒤집기 (true -> false, false -> true)
+        user.toggleNotification(!user.isNotificationEnabled());
+
+        return user.isNotificationEnabled(); // 변경된 상태 반환
+    }
+
+    private final EmailService emailService;
+
+    @Transactional
+    public void sendTemporaryPassword(String email) {
+        // 1. 해당 이메일로 가입한 유저가 있는지 검증
+        AppUser user = appUserRepository.findByEmail(email)
+                .orElseThrow(() -> new IllegalArgumentException("해당 이메일로 가입된 유저를 찾을 수 없습니다."));
+
+        // 2. 임시 비밀번호 생성 (8자리 영문 대소문자 + 숫자 혼합 형태)
+        String tempPassword = generateRandomPassword();
+
+        // 3. DB에 암호화된 임시 비밀번호 저장
+        // (AppUser 엔티티 내부에 비밀번호 변경용 메서드가 있다면 그걸 쓰셔도 좋습니다)
+        String encodedPassword = passwordEncoder.encode(tempPassword);
+        user.updatePassword(encodedPassword);
+
+        // 4. 이메일 발송 (이메일 실패 시 전체 트랜잭션이 롤백되도록 구성)
+        emailService.sendTemporaryPassword(email, tempPassword);
+    }
+
+    // 8자리 랜덤 비밀번호 생성 헬퍼 메서드
+    private String generateRandomPassword() {
+        return java.util.UUID.randomUUID().toString().substring(0, 8);
+    }
+
+    @Transactional
+    public void changePassword(Long userId, PasswordChangeRequest request) {
+        // 로그인한 유저 정보 조회
+        AppUser user = appUserRepository.findById(userId)
+                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+
+        // 입력한 현재 비밀번호가 DB에 저장된 암호화된 비밀번호와 일치하는지 검증
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("현재 비밀번호가 일치하지 않습니다.");
+        }
+
+        // 3. 새 비밀번호 암호화 후 엔티티 메서드를 통해 반영 (아까 만든 updatePassword 사용)
+        String encodedPassword = passwordEncoder.encode(request.newPassword());
+        user.updatePassword(encodedPassword);
+
+        log.info("🔐 유저 ID [{}]의 비밀번호가 성공적으로 변경되었습니다.", userId);
+    }
+
 }

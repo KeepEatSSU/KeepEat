@@ -20,6 +20,15 @@ public interface IngredientRepository extends JpaRepository<Ingredient, Long> {
             SELECT i FROM Ingredient i
             JOIN FETCH i.subCategory sc
             JOIN FETCH sc.category
+            WHERE i.status = com.keepeat.backend.domain.common.enums.IngredientStatus.ACTIVE
+            ORDER BY i.id
+            """)
+    List<Ingredient> findAllActiveWithSubCategoryAndCategory();
+
+    @Query("""
+            SELECT i FROM Ingredient i
+            JOIN FETCH i.subCategory sc
+            JOIN FETCH sc.category
             WHERE (:keyword IS NULL OR :keyword = '' OR i.name LIKE CONCAT('%', :keyword, '%'))
               AND (:subCategoryId IS NULL OR sc.id = :subCategoryId)
               AND (:status IS NULL OR i.status = :status)

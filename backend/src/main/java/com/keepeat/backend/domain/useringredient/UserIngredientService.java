@@ -55,6 +55,19 @@ public class UserIngredientService {
     @Transactional
     public List<UserIngredientResponse> create(Long userId, List<UserIngredientCreateRequest> items) {
         List<UserIngredient> entities = items.stream().map(item -> {
+            if (item.ingredientId() == null) {
+                return UserIngredient.builder()
+                        .userId(userId)
+                        .ingredient(null)
+                        .storageType(item.storageType())
+                        .purchaseDate(item.purchaseDate())
+                        .expiryDate(item.expiryDate())
+                        .quantity(item.quantity())
+                        .unit(item.unit())
+                        .customName(item.customName())
+                        .build();
+            }
+
             Ingredient ingredient = ingredientRepository.findById(item.ingredientId())
                     .orElseThrow(() -> new KeepEatException(ErrorCode.INGREDIENT_NOT_FOUND));
 

@@ -72,7 +72,7 @@ public class RecipeAiService {
 
 
 
-    @Transactional(readOnly = true)
+    @Transactional
     public GeneratedRecipesResponseDto generateRecipes(Long userId) {
 
         GeneratedRecipesResponseDto responseFromAi;
@@ -81,6 +81,11 @@ public class RecipeAiService {
         List<Map<String, Object>> ingredientList = new ArrayList<>();
 
         for (UserIngredient ui : userIngredients) {
+
+            // 커스텀 식재료(ingredient_id IS NULL)는 레시피 생성 후보에서 제외
+            if (ui.getIngredient() == null) {
+                continue;
+            }
 
             String categoryName = ui.getIngredient().getSubCategory().getCategory().getName();
 

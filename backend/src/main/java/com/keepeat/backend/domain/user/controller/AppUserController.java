@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.user.controller;
 
 import com.keepeat.backend.domain.user.dto.*;
 import com.keepeat.backend.domain.user.service.AppUserService;
+import com.keepeat.backend.domain.user.service.EmailService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -21,6 +22,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AppUserController {
 
+    private final EmailService emailService;
     private final AppUserService appUserService;
 
     // POST http://localhost:8080/api/users/signup

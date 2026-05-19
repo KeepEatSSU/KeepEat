@@ -50,12 +50,12 @@ public class RecipeController {
         return ResponseEntity.ok(response);
     }
 
-    @GetMapping("/api/v1/my-recipes/detail/{recipeId}")
-    public ResponseEntity<?> getMyRecipeDetail(
+    @GetMapping("/api/v1/recipes/detail/{recipeId}")
+    public ResponseEntity<RecipeDetailResponseDto> getMyRecipeDetail(
             @PathVariable Long recipeId,
             @AuthenticationPrincipal Long userId
     ){
-        RecipeDetailResponseDto response = recipeService.getDetailOfMyRecipe(userId,recipeId );
+        RecipeDetailResponseDto response = recipeService.getRecipeDetail(userId,recipeId);
 
         return ResponseEntity.ok(response);
     }

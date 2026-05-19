@@ -154,13 +154,13 @@ public class RecipeService {
 
     // 관심 레시피 세부 정보 조회 메서드
     @Transactional(readOnly = true)
-    public RecipeDetailResponseDto getDetailOfMyRecipe(Long userId, Long recipeId){
+    public RecipeDetailResponseDto getRecipeDetail(Long userId, Long recipeId){
 
         Recipe recipe = recipeRepository.findByIdWithIngredient(recipeId)
                 .orElseThrow(() -> new KeepEatException(ErrorCode.RECIPE_NOT_FOUND));
 
-        UserRecipe userRecipe = userRecipeRepository.findByAppUserIdAndRecipeId(userId, recipeId)
-                .orElseThrow(() -> new KeepEatException(ErrorCode.USER_RECIPE_ACCESS_DENIED));
+        Optional<UserRecipe> userRecipe = userRecipeRepository.findByAppUserIdAndRecipeId(userId, recipeId);
+        boolean isRegisteredMyRecipe = userRecipe.isPresent();
 
 
         List<String> instructionList = (recipe.getInstructions() == null || recipe.getInstructions().isBlank())
@@ -194,7 +194,7 @@ public class RecipeService {
                 .instructions(instructionList)
                 .cookingMethod(recipe.getCookingMethod())
                 .requiredIngredients(recipeIngredientList)
-                .createdAt(userRecipe.getCreatedAt())
+                .isRegisteredMyRecipe(isRegisteredMyRecipe)
                 .build();
 
         return response;
@@ -207,6 +207,11 @@ public class RecipeService {
         // 1. 레시피가 진짜 있는지 검증
         Recipe recipe = recipeRepository.findById(recipeId)
                 .orElseThrow(() -> new KeepEatException(ErrorCode.RECIPE_NOT_FOUND));
+
+        // 내 레시피에 등록한 레시피만 요리가 가능하도록
+        // 실제로 유저가 해당 레시피를 보유중인지 확인.
+        UserRecipe userRecipe = userRecipeRepository.findByAppUserIdAndRecipeId(userId, recipeId)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.RECIPE_NOT_BOOKMARKED));
 
         // -------------------------------------------------------------
         // TODO: 향후 여기에 '요리 기록(CookingHistory)' DB에 저장하거나,

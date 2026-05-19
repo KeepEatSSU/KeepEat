@@ -20,10 +20,12 @@ import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import org.springframework.data.domain.Pageable;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -238,5 +240,51 @@ public class RecipeService {
             );
         }
     }
+
+    @Transactional(readOnly = true)
+    public RecipeListResponseDto searchRecipes(String keyword, String cursor, int size){
+
+        // 입력 검증
+        if (size < 1) size = 20;
+        if (size > 100) size = 100;
+        if (keyword != null && keyword.isBlank()) keyword = null;
+        if (keyword != null && keyword.length() > 100) keyword = keyword.substring(0, 100);
+
+        LocalDate lastCreatedAt = null;
+        Long lastId = null;
+
+        if(cursor != null && !cursor.isBlank()){
+            String[] parts = cursor.split("_");
+
+            if(parts.length != 2){
+                throw new KeepEatException(ErrorCode.INVALID_CURSOR);
+            }
+
+            try{
+                lastCreatedAt = LocalDate.parse(parts[0]);
+                lastId = Long.parseLong(parts[1]);
+            }catch(Exception e){
+                throw new KeepEatException(ErrorCode.INVALID_CURSOR);
+            }
+        }
+        Pageable pageable = PageRequest.of(0, size + 1);
+
+        List<RecipeListItemDto> listItems = recipeRepository.searchRecipes(keyword, lastCreatedAt, lastId, pageable);
+
+        boolean hasNext = listItems.size() > size;
+        if (hasNext) {
+            listItems = new ArrayList<>(listItems.subList(0, size));
+        }
+
+        String nextCursor = null;
+        if (hasNext && !listItems.isEmpty()) {
+            RecipeListItemDto last = listItems.get(listItems.size() - 1);
+            nextCursor = last.createdAt() + "_" + last.recipeId();
+        }
+
+        return new RecipeListResponseDto(listItems, nextCursor, hasNext);
+    }
+
+
 
 }

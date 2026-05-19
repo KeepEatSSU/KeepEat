@@ -28,6 +28,7 @@ public enum ErrorCode {
     AI_API_FAILURE(HttpStatus.BAD_GATEWAY, "AI 레시피 생성에 실패했습니다. 잠시 후 다시 시도해주세요."),
     AI_RESPONSE_PARSE_FAILURE(HttpStatus.INTERNAL_SERVER_ERROR, "AI 응답을 처리하는 중 오류가 발생했습니다."),
     RECIPE_NOT_BOOKMARKED(HttpStatus.FORBIDDEN, "내 레시피에 등록되지 않은 레시피 입니다."),
+    INVALID_CURSOR(HttpStatus.BAD_REQUEST, "잘못된 커서 형식입니다."),
 
     // 유저
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 유저를 찾을 수 없습니다."),

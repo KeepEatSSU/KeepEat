@@ -81,4 +81,14 @@ public class RecipeController {
         return ResponseEntity.ok("요리 완료 처리가 성공적으로 기록되었습니다.");
     }
 
+    @GetMapping("/api/v1/recipes")
+    public ResponseEntity<RecipeListResponseDto> searchRecipes(
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String cursor,
+            @RequestParam(defaultValue = "20") int size
+    ) {
+        RecipeListResponseDto response = recipeService.searchRecipes(keyword, cursor, size);
+        return ResponseEntity.ok(response);
+    }
+
 }

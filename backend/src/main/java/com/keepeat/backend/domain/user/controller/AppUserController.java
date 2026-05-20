@@ -22,6 +22,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class AppUserController {
 
+    private final EmailService emailService;
     private final AppUserService appUserService;
     private final EmailService emailService;
 

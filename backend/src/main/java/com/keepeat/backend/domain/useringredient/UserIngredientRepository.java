@@ -12,19 +12,19 @@ import java.time.LocalDate;
 public interface UserIngredientRepository extends JpaRepository<UserIngredient, Long> {
 
     @Query("SELECT ui FROM UserIngredient ui " +
-            "JOIN FETCH ui.ingredient i " +
-            "JOIN FETCH i.subCategory sc " +
-            "JOIN FETCH sc.category c " +
+            "LEFT JOIN FETCH ui.ingredient i " +
+            "LEFT JOIN FETCH i.subCategory sc " +
+            "LEFT JOIN FETCH sc.category c " +
             "WHERE ui.userId = :userId " +
             "ORDER BY ui.expiryDate ASC NULLS LAST")
     List<UserIngredient> findAllByUserIdOrderByExpiryDate(@Param("userId") Long userId);
 
     @Query("SELECT ui FROM UserIngredient ui " +
-            "JOIN FETCH ui.ingredient i " +
-            "JOIN FETCH i.subCategory sc " +
-            "JOIN FETCH sc.category c " +
+            "LEFT JOIN FETCH ui.ingredient i " +
+            "LEFT JOIN FETCH i.subCategory sc " +
+            "LEFT JOIN FETCH sc.category c " +
             "WHERE ui.userId = :userId " +
-            "AND i.name LIKE %:q% " +
+            "AND (i.name LIKE %:q% OR ui.customName LIKE %:q%) " +
             "ORDER BY ui.expiryDate ASC NULLS LAST")
     List<UserIngredient> searchByIngredientName(
             @Param("userId") Long userId,
@@ -32,9 +32,9 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
     );
 
     @Query("SELECT ui FROM UserIngredient ui " +
-            "JOIN FETCH ui.ingredient i " +
-            "JOIN FETCH i.subCategory sc " +
-            "JOIN FETCH sc.category c " +
+            "LEFT JOIN FETCH ui.ingredient i " +
+            "LEFT JOIN FETCH i.subCategory sc " +
+            "LEFT JOIN FETCH sc.category c " +
             "WHERE ui.id = :id AND ui.userId = :userId")
     Optional<UserIngredient> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 

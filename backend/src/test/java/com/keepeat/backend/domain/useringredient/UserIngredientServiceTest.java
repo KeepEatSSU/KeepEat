@@ -27,8 +27,11 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class UserIngredientServiceTest {
@@ -162,6 +165,66 @@ class UserIngredientServiceTest {
                 .isInstanceOf(KeepEatException.class)
                 .satisfies(e -> assertThat(((KeepEatException) e).getErrorCode())
                         .isEqualTo(ErrorCode.INGREDIENT_STORAGE_NOT_FOUND));
+    }
+
+    @Test
+    @DisplayName("커스텀 식재료 등록 — ingredientId=null, 마스터 조회 호출 0회")
+    void create_customIngredient_success() {
+        // given
+        LocalDate purchaseDate = LocalDate.of(2026, 5, 19);
+        LocalDate expiryDate = LocalDate.of(2026, 6, 30);
+
+        given(userIngredientRepository.saveAll(anyList())).willAnswer(invocation -> invocation.getArgument(0));
+
+        UserIngredientCreateRequest request = new UserIngredientCreateRequest(
+                null, StorageType.냉장, purchaseDate, expiryDate, 1.0, "병", "수제 딸기잼"
+        );
+
+        // when
+        List<UserIngredientResponse> result = userIngredientService.create(USER_ID, List.of(request));
+
+        // then
+        assertThat(result).hasSize(1);
+        UserIngredientResponse response = result.get(0);
+        assertThat(response.ingredientId()).isNull();
+        assertThat(response.name()).isNull();
+        assertThat(response.categoryName()).isNull();
+        assertThat(response.subCategoryName()).isNull();
+        assertThat(response.customName()).isEqualTo("수제 딸기잼");
+        assertThat(response.isCustom()).isTrue();
+        assertThat(response.expiryDate()).isEqualTo(expiryDate);
+
+        verify(ingredientRepository, never()).findById(any());
+        verify(ingredientStorageRepository, never()).findByIngredientIdAndStorageType(any(), any());
+    }
+
+    @Test
+    @DisplayName("커스텀과 마스터 식재료 혼합 등록")
+    void create_customAndMasterMixed() {
+        // given
+        Ingredient ingredient = createIngredient(INGREDIENT_ID, "삼겹살");
+        IngredientStorage storage = createStorage(ingredient, StorageType.냉장, 5, Metric.Days);
+        LocalDate purchaseDate = LocalDate.of(2026, 5, 19);
+
+        given(ingredientRepository.findById(INGREDIENT_ID)).willReturn(Optional.of(ingredient));
+        given(ingredientStorageRepository.findByIngredientIdAndStorageType(INGREDIENT_ID, StorageType.냉장))
+                .willReturn(Optional.of(storage));
+        given(userIngredientRepository.saveAll(anyList())).willAnswer(invocation -> invocation.getArgument(0));
+
+        List<UserIngredientCreateRequest> requests = List.of(
+                new UserIngredientCreateRequest(INGREDIENT_ID, StorageType.냉장, purchaseDate, null, 500.0, "g", null),
+                new UserIngredientCreateRequest(null, StorageType.냉장, purchaseDate, LocalDate.of(2026, 6, 30), 1.0, "병", "수제 딸기잼")
+        );
+
+        // when
+        List<UserIngredientResponse> result = userIngredientService.create(USER_ID, requests);
+
+        // then
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).isCustom()).isFalse();
+        assertThat(result.get(0).name()).isEqualTo("삼겹살");
+        assertThat(result.get(1).isCustom()).isTrue();
+        assertThat(result.get(1).customName()).isEqualTo("수제 딸기잼");
     }
 
     private Ingredient createIngredient(Long id, String name) {

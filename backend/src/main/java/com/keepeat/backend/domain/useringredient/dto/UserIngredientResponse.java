@@ -1,12 +1,14 @@
 package com.keepeat.backend.domain.useringredient.dto;
 
 import com.keepeat.backend.domain.common.enums.StorageType;
+import com.keepeat.backend.domain.ingredient.Ingredient;
 import com.keepeat.backend.domain.useringredient.UserIngredient;
 
 import java.time.LocalDate;
 
 public record UserIngredientResponse(
         Long id,
+        Long ingredientId,
         String name,
         String customName,
         String categoryName,
@@ -16,21 +18,27 @@ public record UserIngredientResponse(
         String unit,
         LocalDate purchaseDate,
         LocalDate expiryDate,
-        Long daysLeft
+        Long daysLeft,
+        boolean isCustom
 ) {
     public static UserIngredientResponse of(UserIngredient ui, Long daysLeft) {
+        Ingredient ingredient = ui.getIngredient();
+        boolean isCustom = (ingredient == null);
+
         return new UserIngredientResponse(
                 ui.getId(),
-                ui.getIngredient().getName(),
+                isCustom ? null : ingredient.getId(),
+                isCustom ? null : ingredient.getName(),
                 ui.getCustomName(),
-                ui.getIngredient().getSubCategory().getCategory().getName(),
-                ui.getIngredient().getSubCategory().getName(),
+                isCustom ? null : ingredient.getSubCategory().getCategory().getName(),
+                isCustom ? null : ingredient.getSubCategory().getName(),
                 ui.getStorageType(),
                 ui.getQuantity(),
                 ui.getUnit(),
                 ui.getPurchaseDate(),
                 ui.getExpiryDate(),
-                daysLeft
+                daysLeft,
+                isCustom
         );
     }
 }

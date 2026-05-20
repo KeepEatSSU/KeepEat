@@ -170,6 +170,7 @@ public class RecipeService {
         List<UserIngredient> userIngredients = userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId);
 
         Set<Long> userIngredientSet = userIngredients.stream()
+                .filter(ui -> ui.getIngredient() != null)
                 .map(ingredient -> ingredient.getIngredient().getId())
                 .collect(Collectors.toSet());
 

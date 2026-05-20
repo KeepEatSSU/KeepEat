@@ -22,8 +22,9 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation 'org.springframework.boot:spring-boot-starter-validation'
-	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.springframework.boot:spring-boot-starter-web'
 	implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
 
 	// ===  Swagger  ===
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.8'
@@ -50,9 +51,7 @@ dependencies {
 	// ===  테스트 관련  ===
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.security:spring-security-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
-	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testRuntimeOnly 'com.h2database:h2'
 
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'
@@ -61,7 +60,6 @@ dependencies {
 
     // 아이디, 비밀번호 인식 관련
     implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'org.springframework.boot:spring-boot-starter-mail'
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-client'
     implementation 'org.springframework.security.oauth.boot:spring-security-oauth2-autoconfigure:2.1.7.RELEASE'
 
@@ -72,4 +70,8 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+}
+
+tasks.named('bootJar') {
+	duplicatesStrategy = DuplicatesStrategy.EXCLUDE
 }

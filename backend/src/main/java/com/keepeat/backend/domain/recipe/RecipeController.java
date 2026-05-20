@@ -15,6 +15,7 @@ import java.util.List;
 public class RecipeController {
     private final RecipeService recipeService;
     private final RecipeAiService recipeAiService;
+    private final RecipeReactionService recipeReactionService;
 
     @PostMapping("/api/v1/recipes/generate")
     public ResponseEntity<GeneratedRecipesResponseDto> getGeneratedRecipes(
@@ -85,10 +86,22 @@ public class RecipeController {
     public ResponseEntity<RecipeListResponseDto> searchRecipes(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String cursor,
-            @RequestParam(defaultValue = "20") int size
+            @RequestParam(defaultValue = "20") int size,
+            @AuthenticationPrincipal Long userId
     ) {
-        RecipeListResponseDto response = recipeService.searchRecipes(keyword, cursor, size);
+        RecipeListResponseDto response = recipeService.searchRecipes(keyword, cursor, size, userId);
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/api/v1/recipes/{recipeId}/reaction")
+    public ResponseEntity<Void> reactToRecipe(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable Long recipeId,
+            @Valid @RequestBody RecipeReactionRequestDto request
+    ){
+        recipeReactionService.react(userId, recipeId, request.reactionType());
+
+        return ResponseEntity.noContent().build();
     }
 
 }

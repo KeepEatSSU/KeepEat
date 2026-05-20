@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.recipe.dto;
 
 import com.keepeat.backend.domain.common.enums.CookingMethod;
 import com.keepeat.backend.domain.common.enums.Difficulty;
+import com.keepeat.backend.domain.common.enums.ReactionType;
 
 import java.time.LocalDate;
 
@@ -12,6 +13,9 @@ public record MyRecipeDto(
         CookingMethod cookingMethod,
         String cookingTime,
         Integer calories,
-        LocalDate createdAt
+        LocalDate createdAt,
+        long likeCount,
+        long dislikeCount,
+        ReactionType myReaction
 
 ) { }

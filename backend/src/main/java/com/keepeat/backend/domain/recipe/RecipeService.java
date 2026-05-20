@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.recipe;
 
+import com.keepeat.backend.domain.common.enums.ReactionType;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.ingredient.Ingredient;
@@ -7,7 +8,9 @@ import com.keepeat.backend.domain.ingredient.IngredientMappingService;
 import com.keepeat.backend.domain.recipe.dto.*;
 import com.keepeat.backend.domain.recipe.entity.Recipe;
 import com.keepeat.backend.domain.recipe.entity.RecipeIngredient;
+import com.keepeat.backend.domain.recipe.entity.RecipeReaction;
 import com.keepeat.backend.domain.recipe.entity.UserRecipe;
+import com.keepeat.backend.domain.recipe.repository.RecipeReactionRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeRepository;
 import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
 
@@ -42,6 +45,7 @@ public class RecipeService {
     private final IngredientMappingService ingredientMappingService;
     private final TransactionTemplate transactionTemplate;
     private final com.keepeat.backend.domain.notification.service.NotificationService notificationService;
+    private final RecipeReactionRepository recipeReactionRepository;
 
     // 레시피 데이터들 받아서 레시피 저장 하고 관심 레시피 등록
     public void saveRecipes(RegisteredRecipesRequestDto requestRecipes, Long userId){
@@ -137,19 +141,48 @@ public class RecipeService {
     public MyRecipesResponseDto getMyRecipesByUserId(Long userId){
         List<UserRecipe> userRecipes = userRecipeRepository.findAllByUserId(userId);
 
+        if (userRecipes.isEmpty()) {
+            return new MyRecipesResponseDto(new ArrayList<>());
+        }
+
+        List<Long> recipeIds = userRecipes.stream()
+                .map(ur -> ur.getRecipe().getId())
+                .toList();
+
+        Map<Long, Long> likeCountMap = recipeReactionRepository
+                .countByRecipeIdsAndType(recipeIds, ReactionType.LIKE).stream()
+                .collect(Collectors.toMap(ReactionCountDto::recipeId, ReactionCountDto::count));
+
+        Map<Long, Long> dislikeCountMap = recipeReactionRepository
+                .countByRecipeIdsAndType(recipeIds, ReactionType.DISLIKE).stream()
+                .collect(Collectors.toMap(ReactionCountDto::recipeId, ReactionCountDto::count));
+
+        Map<Long, ReactionType> myReactionMap = recipeReactionRepository
+                .findAllByUserIdAndRecipeIds(userId, recipeIds).stream()
+                .collect(Collectors.toMap(
+                        r -> r.getRecipe().getId(),
+                        RecipeReaction::getReactionType
+                ));
+
+
+
         List<MyRecipeDto> myRecipes = new ArrayList<>();
 
         for(UserRecipe userRecipe : userRecipes){
             Recipe recipe = userRecipe.getRecipe();
+            Long recipeId = recipe.getId();
             myRecipes.add(new MyRecipeDto(
-                    recipe.getId(),
+                    recipeId,
                     recipe.getRecipeName(),
                     recipe.getDifficulty(),
                     recipe.getCookingMethod(),
                     recipe.getCookingTime(),
                     recipe.getCalories(),
-                    userRecipe.getCreatedAt())
-            );
+                    userRecipe.getCreatedAt(),
+                    likeCountMap.getOrDefault(recipeId, 0L),
+                    dislikeCountMap.getOrDefault(recipeId, 0L),
+                    myReactionMap.get(recipeId)
+            ));
         }
         return new MyRecipesResponseDto(myRecipes);
     }
@@ -187,6 +220,13 @@ public class RecipeService {
             ));
         }
 
+        long likeCount = recipeReactionRepository.countByRecipeIdAndReactionType(recipeId, ReactionType.LIKE);
+        long dislikeCount = recipeReactionRepository.countByRecipeIdAndReactionType(recipeId, ReactionType.DISLIKE);
+
+        ReactionType myReaction = recipeReactionRepository.findByAppUserIdAndRecipeId(userId, recipeId)
+                .map(RecipeReaction::getReactionType)
+                .orElse(null);
+
         RecipeDetailResponseDto response = RecipeDetailResponseDto.builder()
                 .recipeId(recipe.getId())
                 .recipeName(recipe.getRecipeName())
@@ -197,6 +237,9 @@ public class RecipeService {
                 .cookingMethod(recipe.getCookingMethod())
                 .requiredIngredients(recipeIngredientList)
                 .isRegisteredMyRecipe(isRegisteredMyRecipe)
+                .likeCount(likeCount)
+                .dislikeCount(dislikeCount)
+                .myReaction(myReaction)
                 .build();
 
         return response;
@@ -242,7 +285,7 @@ public class RecipeService {
     }
 
     @Transactional(readOnly = true)
-    public RecipeListResponseDto searchRecipes(String keyword, String cursor, int size){
+    public RecipeListResponseDto searchRecipes(String keyword, String cursor, int size, Long userId){
 
         // 입력 검증
         if (size < 1) size = 20;
@@ -276,6 +319,8 @@ public class RecipeService {
             listItems = new ArrayList<>(listItems.subList(0, size));
         }
 
+        listItems = enrichWithReactions(listItems, userId);
+
         String nextCursor = null;
         if (hasNext && !listItems.isEmpty()) {
             RecipeListItemDto last = listItems.get(listItems.size() - 1);
@@ -285,6 +330,43 @@ public class RecipeService {
         return new RecipeListResponseDto(listItems, nextCursor, hasNext);
     }
 
+    private List<RecipeListItemDto> enrichWithReactions(List<RecipeListItemDto> items, Long userId) {
+        if (items.isEmpty()) {
+            return items;
+        }
 
+        List<Long> recipeIds = items.stream()
+                .map(RecipeListItemDto::recipeId)
+                .toList();
+
+        Map<Long, Long> likeCountMap = recipeReactionRepository
+                .countByRecipeIdsAndType(recipeIds, ReactionType.LIKE).stream()
+                .collect(Collectors.toMap(ReactionCountDto::recipeId, ReactionCountDto::count));
+
+        Map<Long, Long> dislikeCountMap = recipeReactionRepository
+                .countByRecipeIdsAndType(recipeIds, ReactionType.DISLIKE).stream()
+                .collect(Collectors.toMap(ReactionCountDto::recipeId, ReactionCountDto::count));
+
+        Map<Long, ReactionType> myReactionMap = recipeReactionRepository.findAllByUserIdAndRecipeIds(userId, recipeIds).stream()
+                .collect(Collectors.toMap(
+                        r -> r.getRecipe().getId(),
+                        RecipeReaction::getReactionType
+                ));
+
+        return items.stream()
+                .map(item -> new RecipeListItemDto(
+                        item.recipeId(),
+                        item.recipeName(),
+                        item.difficulty(),
+                        item.cookingMethod(),
+                        item.cookingTime(),
+                        item.calories(),
+                        item.createdAt(),
+                        likeCountMap.getOrDefault(item.recipeId(), 0L),
+                        dislikeCountMap.getOrDefault(item.recipeId(), 0L),
+                        myReactionMap.get(item.recipeId())
+                ))
+                .toList();
+    }
 
 }

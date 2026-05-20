@@ -41,6 +41,8 @@ public class SecurityConfig {
                         .requestMatchers("/api/users/signup", "/api/users/login","/api/users/refresh", "/error", "/swagger-ui/**", "/v3/api-docs/**", "/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/admin/login").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/email/send").permitAll()
+                        .requestMatchers("/email/verify").permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception

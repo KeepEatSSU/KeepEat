@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.user.service;
 
+import com.keepeat.backend.domain.user.entity.EmailAuth;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.SimpleMailMessage;
@@ -8,6 +9,7 @@ import org.springframework.stereotype.Service;
 import com.keepeat.backend.domain.user.entity.EmailAuth;
 import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
+
 
 @Slf4j
 @Service

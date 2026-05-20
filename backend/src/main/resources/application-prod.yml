@@ -7,13 +7,13 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update    # FIRST-DEPLOY-ONLY: 첫 배포 후 'validate'로 되돌릴 것
+      ddl-auto: validate
     show-sql: false
     defer-datasource-initialization: true
 
   sql:
     init:
-      mode: always         # FIRST-DEPLOY-ONLY: 첫 배포 후 'never'로 되돌릴 것
+      mode: never
 
   ai:
     google:

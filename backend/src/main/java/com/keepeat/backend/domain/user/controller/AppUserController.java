@@ -24,7 +24,6 @@ public class AppUserController {
 
     private final EmailService emailService;
     private final AppUserService appUserService;
-    private final EmailService emailService;
 
     // POST http://localhost:8080/api/users/signup
     @Operation(summary = "회원가입", description = "이메일, 비밀번호, 닉네임으로 회원가입을 진행합니다.")

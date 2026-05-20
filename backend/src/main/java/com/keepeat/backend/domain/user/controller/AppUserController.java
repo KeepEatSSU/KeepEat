@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.user.controller;
 
 import com.keepeat.backend.domain.user.dto.*;
 import com.keepeat.backend.domain.user.service.AppUserService;
+import com.keepeat.backend.domain.user.service.EmailService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -22,6 +23,7 @@ import java.util.Map;
 public class AppUserController {
 
     private final AppUserService appUserService;
+    private final EmailService emailService;
 
     // POST http://localhost:8080/api/users/signup
     @Operation(summary = "회원가입", description = "이메일, 비밀번호, 닉네임으로 회원가입을 진행합니다.")
@@ -105,20 +107,17 @@ public class AppUserController {
 
     // 인증번호 발송 API
     @Operation(summary = "회원가입 이메일 인증번호 전송", description = "회원가입 시 로그인 인증을 진행합니다.")
-    @PostMapping("/api/v1/auth/email/send")
-    public ResponseEntity<String> sendEmailAuth(@RequestBody Map<String, String> request) {
-        emailService.sendVerificationCode(request.get("email"));
+    @PostMapping("/send")
+    public ResponseEntity<String> sendEmailAuth(@Valid @RequestBody EmailSendRequest request) {
+        emailService.sendVerificationCode(request.email());
         return ResponseEntity.ok("인증번호가 발송되었습니다.");
     }
 
     //  인증번호 확인 API
     @Operation(summary = "회원가입 이메일 인증번호 확인", description = "이메일 인증번호를 확인합니다.")
-    @PostMapping("/api/v1/auth/email/verify")
-    public ResponseEntity<String> verifyEmailAuth(@RequestBody Map<String, String> request) {
-        String email = request.get("email");
-        String code = request.get("code");
-
-        emailService.verifyAuthCode(email, code);
+    @PostMapping("/verify")
+    public ResponseEntity<String> verifyEmailAuth(@Valid @RequestBody EmailVerifyRequest request) {
+        emailService.verifyAuthCode(request.email(), request.code());
         return ResponseEntity.ok("이메일 인증이 완료되었습니다.");
     }
 }

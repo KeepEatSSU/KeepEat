@@ -44,7 +44,7 @@ public class Recipe {
     @Column(columnDefinition = "TEXT")
     private String instructions;
 
-    @Column
+    @Column(nullable = false)
     private LocalDate createdAt;
 
     @Builder

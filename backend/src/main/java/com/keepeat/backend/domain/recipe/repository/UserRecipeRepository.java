@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.recipe.repository;
 
+import com.keepeat.backend.domain.recipe.dto.ReactionCountDto;
 import com.keepeat.backend.domain.recipe.entity.UserRecipe;
 import com.keepeat.backend.domain.useringredient.UserIngredient;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -35,4 +36,16 @@ public interface UserRecipeRepository extends JpaRepository<UserRecipe, Long> {
 
     // 특정 유저가 '특정 날짜 이후'로 요리를 몇 번 했는지 세어주는 쿼리
     int countByAppUser_IdAndCreatedAtAfter(Long userId, LocalDate date);
+
+    @Query("""
+    SELECT new com.keepeat.backend.domain.recipe.dto.ReactionCountDto(ur.recipe.id, COUNT(ur))
+    FROM UserRecipe ur
+    WHERE ur.recipe.id IN :recipeIds
+    GROUP BY ur.recipe.id
+    """)
+    List<ReactionCountDto> countByRecipeIds(@Param("recipeIds") List<Long> recipeIds);
+
+    long countByRecipeId(Long recipeId);
+
+
 }

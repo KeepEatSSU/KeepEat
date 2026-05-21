@@ -21,7 +21,7 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Query("UPDATE Notification n SET n.isRead = true WHERE n.userId = :userId AND n.isRead = false")
     int markAllAsReadByUserId(@Param("userId") Long userId);
 
-    @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND (:cursor IS NULL OR n.id < :cursor) ORDER BY n.id DESC")
+    @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND (cast(:cursor as long) IS NULL OR n.id < :cursor) ORDER BY n.id DESC")
     List<Notification> findNotificationsByCursor(
             @Param("userId") Long userId,
             @Param("cursor") Long cursor,

@@ -15,8 +15,11 @@ import java.time.LocalDate;
         @UniqueConstraint(
                 name = "uk_user_recipe",
                 columnNames = {"app_user_id", "recipe_id"}
-        )
-})
+        )},
+        indexes = {
+                @Index(name = "idx_user_recipe_recipe", columnList = "recipe_id")
+        }
+)
 public class UserRecipe {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

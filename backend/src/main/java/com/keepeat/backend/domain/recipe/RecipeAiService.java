@@ -14,10 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 @Slf4j
 @Service
@@ -68,18 +65,17 @@ public class RecipeAiService {
     }
 
 
-
-
-
-
-    @Transactional
     public GeneratedRecipesResponseDto generateRecipes(Long userId) {
 
         GeneratedRecipesResponseDto responseFromAi;
         List<String> userCondiment = new ArrayList<>();
-        List<UserIngredient> userIngredients = userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId);
-        List<Map<String, Object>> ingredientList = new ArrayList<>();
 
+        List<UserIngredient> userIngredients = userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId);
+
+        Map<String, Map<String, Object>> ingredientByName = new LinkedHashMap<>();
+
+
+        // 만료일 빠른 순으로 정렬되어 들어오므로, 같은 이름은 가장 임박한 것이 먼저 등장
         for (UserIngredient ui : userIngredients) {
 
             // 커스텀 식재료(ingredient_id IS NULL)는 레시피 생성 후보에서 제외
@@ -88,19 +84,24 @@ public class RecipeAiService {
             }
 
             String categoryName = ui.getIngredient().getSubCategory().getCategory().getName();
+            String name = ui.getIngredient().getName();
 
             if("양념/소스".equals(categoryName)){
-                userCondiment.add(ui.getIngredient().getName());
-            }else{
-                long daysLeft = calculateDaysLeft(ui.getExpiryDate());
-                Map<String, Object> data = new HashMap<>();
+                if(!userCondiment.contains(name)) {
+                    userCondiment.add(name);
+                }
 
-                data.put("name", ui.getIngredient().getName());
+            }else if(!ingredientByName.containsKey(name)){
+                long daysLeft = calculateDaysLeft(ui.getExpiryDate());
+                Map<String, Object> data = new LinkedHashMap<>();
+
+                data.put("name", name);
                 data.put("days_left", daysLeft);
 
-                ingredientList.add(data);
+                ingredientByName.put(name, data);
             }
         }
+        List<Map<String, Object>> ingredientList = new ArrayList<>(ingredientByName.values());
 
         // 사용자 보유 식재료 확인용 로그
         log.debug(ingredientList.toString());

@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.recipe;
 
+import com.keepeat.backend.domain.common.enums.ReactionType;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.ingredient.Ingredient;
@@ -7,7 +8,9 @@ import com.keepeat.backend.domain.ingredient.IngredientMappingService;
 import com.keepeat.backend.domain.recipe.dto.*;
 import com.keepeat.backend.domain.recipe.entity.Recipe;
 import com.keepeat.backend.domain.recipe.entity.RecipeIngredient;
+import com.keepeat.backend.domain.recipe.entity.RecipeReaction;
 import com.keepeat.backend.domain.recipe.entity.UserRecipe;
+import com.keepeat.backend.domain.recipe.repository.RecipeReactionRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeRepository;
 import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
 
@@ -20,10 +23,12 @@ import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import org.springframework.data.domain.Pageable;
 import java.time.LocalDate;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -40,6 +45,7 @@ public class RecipeService {
     private final IngredientMappingService ingredientMappingService;
     private final TransactionTemplate transactionTemplate;
     private final com.keepeat.backend.domain.notification.service.NotificationService notificationService;
+    private final RecipeReactionRepository recipeReactionRepository;
 
     // 레시피 데이터들 받아서 레시피 저장 하고 관심 레시피 등록
     public void saveRecipes(RegisteredRecipesRequestDto requestRecipes, Long userId){
@@ -135,32 +141,61 @@ public class RecipeService {
     public MyRecipesResponseDto getMyRecipesByUserId(Long userId){
         List<UserRecipe> userRecipes = userRecipeRepository.findAllByUserId(userId);
 
+        if (userRecipes.isEmpty()) {
+            return new MyRecipesResponseDto(new ArrayList<>());
+        }
+
+        List<Long> recipeIds = userRecipes.stream()
+                .map(ur -> ur.getRecipe().getId())
+                .toList();
+
+        Map<Long, Long> likeCountMap = recipeReactionRepository
+                .countByRecipeIdsAndType(recipeIds, ReactionType.LIKE).stream()
+                .collect(Collectors.toMap(ReactionCountDto::recipeId, ReactionCountDto::count));
+
+        Map<Long, Long> dislikeCountMap = recipeReactionRepository
+                .countByRecipeIdsAndType(recipeIds, ReactionType.DISLIKE).stream()
+                .collect(Collectors.toMap(ReactionCountDto::recipeId, ReactionCountDto::count));
+
+        Map<Long, ReactionType> myReactionMap = recipeReactionRepository
+                .findAllByUserIdAndRecipeIds(userId, recipeIds).stream()
+                .collect(Collectors.toMap(
+                        r -> r.getRecipe().getId(),
+                        RecipeReaction::getReactionType
+                ));
+
+
+
         List<MyRecipeDto> myRecipes = new ArrayList<>();
 
         for(UserRecipe userRecipe : userRecipes){
             Recipe recipe = userRecipe.getRecipe();
+            Long recipeId = recipe.getId();
             myRecipes.add(new MyRecipeDto(
-                    recipe.getId(),
+                    recipeId,
                     recipe.getRecipeName(),
                     recipe.getDifficulty(),
                     recipe.getCookingMethod(),
                     recipe.getCookingTime(),
                     recipe.getCalories(),
-                    userRecipe.getCreatedAt())
-            );
+                    userRecipe.getCreatedAt(),
+                    likeCountMap.getOrDefault(recipeId, 0L),
+                    dislikeCountMap.getOrDefault(recipeId, 0L),
+                    myReactionMap.get(recipeId)
+            ));
         }
         return new MyRecipesResponseDto(myRecipes);
     }
 
     // 관심 레시피 세부 정보 조회 메서드
     @Transactional(readOnly = true)
-    public RecipeDetailResponseDto getDetailOfMyRecipe(Long userId, Long recipeId){
+    public RecipeDetailResponseDto getRecipeDetail(Long userId, Long recipeId){
 
         Recipe recipe = recipeRepository.findByIdWithIngredient(recipeId)
                 .orElseThrow(() -> new KeepEatException(ErrorCode.RECIPE_NOT_FOUND));
 
-        UserRecipe userRecipe = userRecipeRepository.findByAppUserIdAndRecipeId(userId, recipeId)
-                .orElseThrow(() -> new KeepEatException(ErrorCode.USER_RECIPE_ACCESS_DENIED));
+        Optional<UserRecipe> userRecipe = userRecipeRepository.findByAppUserIdAndRecipeId(userId, recipeId);
+        boolean isRegisteredMyRecipe = userRecipe.isPresent();
 
 
         List<String> instructionList = (recipe.getInstructions() == null || recipe.getInstructions().isBlank())
@@ -186,6 +221,13 @@ public class RecipeService {
             ));
         }
 
+        long likeCount = recipeReactionRepository.countByRecipeIdAndReactionType(recipeId, ReactionType.LIKE);
+        long dislikeCount = recipeReactionRepository.countByRecipeIdAndReactionType(recipeId, ReactionType.DISLIKE);
+
+        ReactionType myReaction = recipeReactionRepository.findByAppUserIdAndRecipeId(userId, recipeId)
+                .map(RecipeReaction::getReactionType)
+                .orElse(null);
+
         RecipeDetailResponseDto response = RecipeDetailResponseDto.builder()
                 .recipeId(recipe.getId())
                 .recipeName(recipe.getRecipeName())
@@ -195,7 +237,10 @@ public class RecipeService {
                 .instructions(instructionList)
                 .cookingMethod(recipe.getCookingMethod())
                 .requiredIngredients(recipeIngredientList)
-                .createdAt(userRecipe.getCreatedAt())
+                .isRegisteredMyRecipe(isRegisteredMyRecipe)
+                .likeCount(likeCount)
+                .dislikeCount(dislikeCount)
+                .myReaction(myReaction)
                 .build();
 
         return response;
@@ -208,6 +253,11 @@ public class RecipeService {
         // 1. 레시피가 진짜 있는지 검증
         Recipe recipe = recipeRepository.findById(recipeId)
                 .orElseThrow(() -> new KeepEatException(ErrorCode.RECIPE_NOT_FOUND));
+
+        // 내 레시피에 등록한 레시피만 요리가 가능하도록
+        // 실제로 유저가 해당 레시피를 보유중인지 확인.
+        UserRecipe userRecipe = userRecipeRepository.findByAppUserIdAndRecipeId(userId, recipeId)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.RECIPE_NOT_BOOKMARKED));
 
         // -------------------------------------------------------------
         // TODO: 향후 여기에 '요리 기록(CookingHistory)' DB에 저장하거나,
@@ -233,6 +283,91 @@ public class RecipeService {
                     String.valueOf(recipeId)
             );
         }
+    }
+
+    @Transactional(readOnly = true)
+    public RecipeListResponseDto searchRecipes(String keyword, String cursor, int size, Long userId){
+
+        // 입력 검증
+        if (size < 1) size = 20;
+        if (size > 100) size = 100;
+        if (keyword != null && keyword.isBlank()) keyword = null;
+        if (keyword != null && keyword.length() > 100) keyword = keyword.substring(0, 100);
+
+        LocalDate lastCreatedAt = null;
+        Long lastId = null;
+
+        if(cursor != null && !cursor.isBlank()){
+            String[] parts = cursor.split("_");
+
+            if(parts.length != 2){
+                throw new KeepEatException(ErrorCode.INVALID_CURSOR);
+            }
+
+            try{
+                lastCreatedAt = LocalDate.parse(parts[0]);
+                lastId = Long.parseLong(parts[1]);
+            }catch(Exception e){
+                throw new KeepEatException(ErrorCode.INVALID_CURSOR);
+            }
+        }
+        Pageable pageable = PageRequest.of(0, size + 1);
+
+        List<RecipeListItemDto> listItems = recipeRepository.searchRecipes(keyword, lastCreatedAt, lastId, pageable);
+
+        boolean hasNext = listItems.size() > size;
+        if (hasNext) {
+            listItems = new ArrayList<>(listItems.subList(0, size));
+        }
+
+        listItems = enrichWithReactions(listItems, userId);
+
+        String nextCursor = null;
+        if (hasNext && !listItems.isEmpty()) {
+            RecipeListItemDto last = listItems.get(listItems.size() - 1);
+            nextCursor = last.createdAt() + "_" + last.recipeId();
+        }
+
+        return new RecipeListResponseDto(listItems, nextCursor, hasNext);
+    }
+
+    private List<RecipeListItemDto> enrichWithReactions(List<RecipeListItemDto> items, Long userId) {
+        if (items.isEmpty()) {
+            return items;
+        }
+
+        List<Long> recipeIds = items.stream()
+                .map(RecipeListItemDto::recipeId)
+                .toList();
+
+        Map<Long, Long> likeCountMap = recipeReactionRepository
+                .countByRecipeIdsAndType(recipeIds, ReactionType.LIKE).stream()
+                .collect(Collectors.toMap(ReactionCountDto::recipeId, ReactionCountDto::count));
+
+        Map<Long, Long> dislikeCountMap = recipeReactionRepository
+                .countByRecipeIdsAndType(recipeIds, ReactionType.DISLIKE).stream()
+                .collect(Collectors.toMap(ReactionCountDto::recipeId, ReactionCountDto::count));
+
+        Map<Long, ReactionType> myReactionMap = recipeReactionRepository.findAllByUserIdAndRecipeIds(userId, recipeIds).stream()
+                .collect(Collectors.toMap(
+                        r -> r.getRecipe().getId(),
+                        RecipeReaction::getReactionType
+                ));
+
+        return items.stream()
+                .map(item -> new RecipeListItemDto(
+                        item.recipeId(),
+                        item.recipeName(),
+                        item.difficulty(),
+                        item.cookingMethod(),
+                        item.cookingTime(),
+                        item.calories(),
+                        item.createdAt(),
+                        likeCountMap.getOrDefault(item.recipeId(), 0L),
+                        dislikeCountMap.getOrDefault(item.recipeId(), 0L),
+                        myReactionMap.get(item.recipeId())
+                ))
+                .toList();
     }
 
 }

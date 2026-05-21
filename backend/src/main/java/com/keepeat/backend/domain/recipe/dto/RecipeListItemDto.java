@@ -6,7 +6,7 @@ import com.keepeat.backend.domain.common.enums.ReactionType;
 
 import java.time.LocalDate;
 
-public record MyRecipeDto(
+public record RecipeListItemDto(
         Long recipeId,
         String recipeName,
         Difficulty difficulty,
@@ -17,5 +17,16 @@ public record MyRecipeDto(
         long likeCount,
         long dislikeCount,
         ReactionType myReaction
-
-) { }
+) {
+    public RecipeListItemDto(
+            Long recipeId,
+            String recipeName,
+            Difficulty difficulty,
+            CookingMethod cookingMethod,
+            String cookingTime,
+            Integer calories,
+            LocalDate createdAt
+    ){
+        this(recipeId, recipeName, difficulty, cookingMethod, cookingTime, calories, createdAt, 0L, 0L, null);
+    }
+}

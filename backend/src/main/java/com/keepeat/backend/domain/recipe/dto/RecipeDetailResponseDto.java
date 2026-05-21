@@ -2,10 +2,9 @@ package com.keepeat.backend.domain.recipe.dto;
 
 import com.keepeat.backend.domain.common.enums.CookingMethod;
 import com.keepeat.backend.domain.common.enums.Difficulty;
-import com.keepeat.backend.domain.common.enums.IngredientStatus;
+import com.keepeat.backend.domain.common.enums.ReactionType;
 import lombok.Builder;
 
-import java.time.LocalDate;
 import java.util.List;
 
 @Builder
@@ -18,5 +17,8 @@ public record RecipeDetailResponseDto(
         Integer calories,
         List<RecipeIngredientDetailDto> requiredIngredients,
         List<String> instructions,
-        LocalDate createdAt
+        boolean isRegisteredMyRecipe,
+        long likeCount,
+        long dislikeCount,
+        ReactionType myReaction
 ) { }

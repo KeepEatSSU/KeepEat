@@ -4,6 +4,7 @@ import com.keepeat.backend.domain.common.enums.ReactionType;
 import com.keepeat.backend.domain.recipe.dto.ReactionCountDto;
 import com.keepeat.backend.domain.recipe.entity.RecipeReaction;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -37,4 +38,8 @@ public interface RecipeReactionRepository extends JpaRepository<RecipeReaction, 
             @Param("userId") Long userId,
             @Param("recipeIds") List<Long> recipeIds
     );
+
+    @Modifying
+    @Query("DELETE FROM RecipeReaction r WHERE r.recipe.id = :recipeId")
+    void deleteAllByRecipeId(@Param("recipeId") Long recipeId);
 }

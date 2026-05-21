@@ -1,7 +1,9 @@
 package com.keepeat.backend.domain.recipe.repository;
 
+import com.keepeat.backend.domain.admin.dto.AdminRecipeListItemDto;
 import com.keepeat.backend.domain.recipe.dto.RecipeListItemDto;
 import com.keepeat.backend.domain.recipe.entity.Recipe;
+import org.springframework.data.domain.Page;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -40,11 +42,117 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
            OR r.createdAt < :lastCreatedAt
            OR (r.createdAt = :lastCreatedAt AND r.id < :lastId))
     ORDER BY r.createdAt DESC, r.id DESC
-""")
+    """)
     List<RecipeListItemDto> searchRecipes(
             @Param("keyword") String keyword,
             @Param("lastCreatedAt") LocalDate lastCreatedAt,
             @Param("lastId") Long lastId,
+            Pageable pageable
+    );
+
+
+    @Query(value = """
+    SELECT new com.keepeat.backend.domain.admin.dto.AdminRecipeListItemDto(
+        r.id, r.recipeName, r.createdAt
+    )
+    FROM Recipe r
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+      AND (:onlyDeletable = false OR NOT EXISTS (
+          SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
+      ))
+    ORDER BY r.id DESC
+""",
+            countQuery = """
+    SELECT COUNT(r) FROM Recipe r
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+      AND (:onlyDeletable = false OR NOT EXISTS (
+          SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
+      ))
+""")
+    Page<AdminRecipeListItemDto> searchForAdmin(
+            @Param("keyword") String keyword,
+            @Param("onlyDeletable") boolean onlyDeletable,
+            Pageable pageable
+    );
+
+    @Query(value = """
+    SELECT new com.keepeat.backend.domain.admin.dto.AdminRecipeListItemDto(
+        r.id, r.recipeName, r.createdAt
+    )
+    FROM Recipe r
+    LEFT JOIN RecipeReaction rr
+           ON rr.recipe = r
+          AND rr.reactionType = com.keepeat.backend.domain.common.enums.ReactionType.LIKE
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+      AND (:onlyDeletable = false OR NOT EXISTS (
+          SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
+      ))
+    GROUP BY r.id, r.recipeName, r.createdAt
+    ORDER BY COUNT(rr.id) DESC, r.id DESC
+    """,
+            countQuery = """
+    SELECT COUNT(r) FROM Recipe r
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+      AND (:onlyDeletable = false OR NOT EXISTS (
+          SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
+      ))
+    """)
+    Page<AdminRecipeListItemDto> searchForAdminOrderByLikes(
+            @Param("keyword") String keyword,
+            @Param("onlyDeletable") boolean onlyDeletable,
+            Pageable pageable
+    );
+
+    @Query(value = """
+    SELECT new com.keepeat.backend.domain.admin.dto.AdminRecipeListItemDto(
+        r.id, r.recipeName, r.createdAt
+    )
+    FROM Recipe r
+    LEFT JOIN RecipeReaction rr
+           ON rr.recipe = r
+          AND rr.reactionType = com.keepeat.backend.domain.common.enums.ReactionType.DISLIKE
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+      AND (:onlyDeletable = false OR NOT EXISTS (
+          SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
+      ))
+    GROUP BY r.id, r.recipeName, r.createdAt
+    ORDER BY COUNT(rr.id) DESC, r.id DESC
+    """,
+            countQuery = """
+    SELECT COUNT(r) FROM Recipe r
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+      AND (:onlyDeletable = false OR NOT EXISTS (
+          SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
+      ))
+    """)
+    Page<AdminRecipeListItemDto> searchForAdminOrderByDislikes(
+            @Param("keyword") String keyword,
+            @Param("onlyDeletable") boolean onlyDeletable,
+            Pageable pageable
+    );
+
+    @Query(value = """
+    SELECT new com.keepeat.backend.domain.admin.dto.AdminRecipeListItemDto(
+        r.id, r.recipeName, r.createdAt
+    )
+    FROM Recipe r
+    LEFT JOIN UserRecipe ur2 ON ur2.recipe = r
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+      AND (:onlyDeletable = false OR NOT EXISTS (
+          SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
+      ))
+    GROUP BY r.id, r.recipeName, r.createdAt
+    ORDER BY COUNT(ur2.id) ASC, r.id DESC
+    """, countQuery = """
+    SELECT COUNT(r) FROM Recipe r
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+      AND (:onlyDeletable = false OR NOT EXISTS (
+          SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
+      ))
+    """)
+    Page<AdminRecipeListItemDto> searchForAdminOrderByBookmarks(
+            @Param("keyword") String keyword,
+            @Param("onlyDeletable") boolean onlyDeletable,
             Pageable pageable
     );
 }

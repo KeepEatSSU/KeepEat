@@ -107,9 +107,9 @@ public class NotificationService {
     }
 
     @Transactional
-    public void deleteToken(String token) {
-        deviceTokenRepository.deleteByToken(token);
-        log.info("기기 토큰이 삭제되었습니다 (로그아웃 처리).");
+    public void deleteToken(Long userId, String token) {
+        deviceTokenRepository.deleteByUserIdAndToken(userId, token);
+        log.info("유저 {}의 기기 토큰이 삭제되었습니다 (로그아웃 처리).", userId);
     }
 
     @Transactional(readOnly = true)

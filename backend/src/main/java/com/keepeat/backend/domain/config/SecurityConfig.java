@@ -43,6 +43,7 @@ public class SecurityConfig {
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/send").permitAll()
                         .requestMatchers("/api/users/verify").permitAll()
+                        .requestMatchers("/api/users/password/find").permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception

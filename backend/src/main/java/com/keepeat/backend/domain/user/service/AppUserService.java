@@ -29,6 +29,7 @@ public class AppUserService {
     private final JwtProvider jwtProvider;
     private final UserRecipeRepository userRecipeRepository;
     private final EmailAuthRepository emailAuthRepository;
+    private final EmailService emailService;
 
     @Transactional
     public Long signUp(SignUpRequest request) {
@@ -106,15 +107,6 @@ public class AppUserService {
         AppUser user = appUserRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
 
-        // 잘 되고 있는지 확인용
-        /*
-        System.out.println("=== 토큰 비교 수사 시작 ===");
-        System.out.println("1. 프론트가 보낸 원본 토큰: " + rawRefreshToken);
-        System.out.println("2. 그걸 서버에서 해싱한 값: " + hashToken(rawRefreshToken));
-        System.out.println("3. DB(AppUser)에 저장된 값: " + user.getRefreshToken());
-        System.out.println("===========================");
-        */
-
         // 2차 검증: 프론트가 보낸 원본 토큰과 DB의 암호화된 토큰이 짝이 맞는지 확인
         if (user.getRefreshToken() == null || !hashToken(rawRefreshToken).equals(user.getRefreshToken())) {
             throw new IllegalArgumentException("이미 로그아웃 되었거나 무효화된 토큰입니다. 다시 로그인해주세요.");
@@ -138,7 +130,7 @@ public class AppUserService {
         return new UserResponse(user.getId(), user.getEmail(), user.getRole(), user.getProvider());
     }
 
-    private String hashToken(String token) {
+    public static String hashToken(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
@@ -167,8 +159,6 @@ public class AppUserService {
 
         return user.isNotificationEnabled(); // 변경된 상태 반환
     }
-
-    private final EmailService emailService;
 
     @Transactional
     public void sendTemporaryPassword(String email) {

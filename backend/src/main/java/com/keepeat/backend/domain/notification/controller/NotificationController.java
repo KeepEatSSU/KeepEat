@@ -60,8 +60,10 @@ public class NotificationController {
 
     @Operation(summary = "기기 푸시 토큰 삭제", description = "로그아웃 시 해당 기기의 푸시 토큰을 삭제합니다.")
     @DeleteMapping("/token")
-    public ResponseEntity<Void> deleteToken(@Valid @RequestBody DeviceTokenRequest request) {
-        notificationService.deleteToken(request.token());
+    public ResponseEntity<Void> deleteToken(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody DeviceTokenRequest request) {
+        notificationService.deleteToken(userId, request.token());
         return ResponseEntity.noContent().build();
     }
 

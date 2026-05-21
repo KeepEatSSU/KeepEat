@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.security.oauth2;
 
 import com.keepeat.backend.domain.user.entity.AppUser;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
+import com.keepeat.backend.domain.user.service.AppUserService;
 import com.keepeat.backend.domain.security.JwtProvider;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -36,10 +37,10 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
 
         // 토큰 발급
         String accessToken = jwtProvider.createAccessToken(email, userId, user.getRole());
-        String refreshToken = jwtProvider.createRefreshToken(email, userId, user.getRole());
+        String rawRefreshToken = jwtProvider.createRefreshToken(email, userId, user.getRole());
 
-        // 발급받은 Refresh Token을 DB에 저장
-        user.updateRefreshToken(refreshToken);
+        // DB에는 해싱된 Refresh Token 저장 (일반 로그인 흐름과 동일)
+        user.updateRefreshToken(AppUserService.hashToken(rawRefreshToken));
         appUserRepository.save(user);
 
         log.info("JWT 토큰 발급 및 DB 저장 완료 - Email: {}", email);
@@ -47,7 +48,7 @@ public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler 
         // 프론트엔드로 리다이렉트
         String targetUrl = UriComponentsBuilder.fromUriString("http://localhost:3000/oauth2/redirect") // 요기 수정
                 .queryParam("accessToken", accessToken)
-                .queryParam("refreshToken", refreshToken)
+                .queryParam("refreshToken", rawRefreshToken)
                 .build().toUriString();
 
         getRedirectStrategy().sendRedirect(request, response, targetUrl);

@@ -24,7 +24,8 @@ public class WeeklyCheerScheduler {
     public void sendWeeklyCheer() {
         log.info("⏰ [주간 응원 알림 스케줄러] 작동 시작!");
 
-        // 탈퇴 안 한 모든 유저 조회
+        // 활성 유저 조회 — AppUser의 @SQLRestriction("deleted_at IS NULL")로 인해
+        // findAll() 결과에서 소프트 삭제된 유저는 자동으로 제외된다.
         List<AppUser> activeUsers = appUserRepository.findAll();
 
         // 루프 돌면서 알림 쏘기
@@ -41,6 +42,6 @@ public class WeeklyCheerScheduler {
             );
         }
 
-        log.info("⏰ [주간 응원 알림 스케줄러] 총 {}명에게 알림 발송 완료!", activeUsers.size());
+        log.info("⏰ [주간 응원 알림 스케줄러] 활성 유저 {}명에게 알림 발송 완료!", activeUsers.size());
     }
 }

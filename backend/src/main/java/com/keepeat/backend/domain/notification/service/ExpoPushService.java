@@ -1,11 +1,11 @@
 package com.keepeat.backend.domain.notification.service;
 
 import com.keepeat.backend.domain.notification.dto.PushSendRequest;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -14,12 +14,19 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ExpoPushService {
 
     // Expo 푸시 알림 공식 API 주소
     private static final String EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
-    private final RestTemplate restTemplate = new RestTemplate();
+    private final RestTemplate restTemplate;
+
+    public ExpoPushService() {
+        // Expo 응답이 늦어져도 스케줄러 스레드가 무한 대기하지 않도록 타임아웃 강제.
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(3000); // 3초
+        factory.setReadTimeout(5000);    // 5초
+        this.restTemplate = new RestTemplate(factory);
+    }
 
     public void sendMessage(PushSendRequest request) {
         try {
@@ -47,7 +54,8 @@ public class ExpoPushService {
             log.info("Expo 푸시 알림 전송 완료. 대상: {}, 응답: {}", request.targetToken(), response);
 
         } catch (Exception e) {
-            log.error("Expo 알림 전송 중 에러 발생: {}", e.getMessage());
+            // 토큰별 실패 원인 추적이 가능하도록 stacktrace까지 남긴다.
+            log.error("Expo push 전송 실패 (token={}): {}", request.targetToken(), e.getMessage(), e);
         }
     }
 }

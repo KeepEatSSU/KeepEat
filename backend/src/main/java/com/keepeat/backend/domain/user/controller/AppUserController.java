@@ -38,7 +38,7 @@ public class AppUserController {
     // POST http://localhost:8080/api/users/login
     @Operation(summary = "로그인", description = "이메일과 비밀번호로 로그인하여 JWT 토큰을 발급받습니다.")
     @PostMapping("/login")
-    public ResponseEntity<TokenResponse> login(@RequestBody LoginRequest request) {
+    public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
 
         TokenResponse tokenResponse = appUserService.login(request);
 

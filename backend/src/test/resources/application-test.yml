@@ -54,6 +54,10 @@ jwt:
 firebase:
   key-path:
 
+app:
+  oauth2:
+    redirect-uri: http://localhost:3000/oauth2/redirect
+
 management:
   endpoints:
     web:

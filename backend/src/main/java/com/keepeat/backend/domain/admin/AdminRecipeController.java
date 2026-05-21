@@ -23,7 +23,7 @@ public class AdminRecipeController {
     @GetMapping
     public String list(
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) AdminRecipeSearchSort sort,
+            @RequestParam(name = "sortType", required = false) AdminRecipeSearchSort sort,
             @RequestParam(required = false, defaultValue = "false") boolean onlyDeletable,
             @RequestParam(required = false) String msg,
             @PageableDefault(value = 20) Pageable pageable,

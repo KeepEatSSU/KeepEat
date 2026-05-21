@@ -69,7 +69,7 @@ public class RecipeAiService {
 
 
 
-    @Transactional(readOnly = true)
+
     public GeneratedRecipesResponseDto generateRecipes(Long userId) {
 
         GeneratedRecipesResponseDto responseFromAi;

@@ -34,9 +34,9 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
             LEFT JOIN r2.requiredIngredients ri
             LEFT JOIN ri.ingredient i
             LEFT JOIN IngredientAlias a ON a.ingredient = i
-            WHERE LOWER(r2.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(i.name)        LIKE LOWER(CONCAT('%', :keyword, '%'))
-               OR LOWER(a.aliasName)   LIKE LOWER(CONCAT('%', :keyword, '%'))
+            WHERE LOWER(r2.recipeName) LIKE LOWER(CONCAT('%', cast(:keyword as string), '%'))
+               OR LOWER(i.name)        LIKE LOWER(CONCAT('%', cast(:keyword as string), '%'))
+               OR LOWER(a.aliasName)   LIKE LOWER(CONCAT('%', cast(:keyword as string), '%'))
           ))
       AND (:lastCreatedAt IS NULL
            OR r.createdAt < :lastCreatedAt
@@ -56,7 +56,7 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
         r.id, r.recipeName, r.createdAt
     )
     FROM Recipe r
-    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', cast(:keyword as string), '%')))
       AND (:onlyDeletable = false OR NOT EXISTS (
           SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
       ))
@@ -64,7 +64,7 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
 """,
             countQuery = """
     SELECT COUNT(r) FROM Recipe r
-    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', cast(:keyword as string), '%')))
       AND (:onlyDeletable = false OR NOT EXISTS (
           SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
       ))
@@ -83,7 +83,7 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     LEFT JOIN RecipeReaction rr
            ON rr.recipe = r
           AND rr.reactionType = com.keepeat.backend.domain.common.enums.ReactionType.LIKE
-    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', cast(:keyword as string), '%')))
       AND (:onlyDeletable = false OR NOT EXISTS (
           SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
       ))
@@ -92,7 +92,7 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     """,
             countQuery = """
     SELECT COUNT(r) FROM Recipe r
-    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', cast(:keyword as string), '%')))
       AND (:onlyDeletable = false OR NOT EXISTS (
           SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
       ))
@@ -111,7 +111,7 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     LEFT JOIN RecipeReaction rr
            ON rr.recipe = r
           AND rr.reactionType = com.keepeat.backend.domain.common.enums.ReactionType.DISLIKE
-    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', cast(:keyword as string), '%')))
       AND (:onlyDeletable = false OR NOT EXISTS (
           SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
       ))
@@ -120,7 +120,7 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     """,
             countQuery = """
     SELECT COUNT(r) FROM Recipe r
-    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', cast(:keyword as string), '%')))
       AND (:onlyDeletable = false OR NOT EXISTS (
           SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
       ))
@@ -137,7 +137,7 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     )
     FROM Recipe r
     LEFT JOIN UserRecipe ur2 ON ur2.recipe = r
-    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', cast(:keyword as string), '%')))
       AND (:onlyDeletable = false OR NOT EXISTS (
           SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
       ))
@@ -145,7 +145,7 @@ public interface RecipeRepository extends JpaRepository<Recipe, Long> {
     ORDER BY COUNT(ur2.id) ASC, r.id DESC
     """, countQuery = """
     SELECT COUNT(r) FROM Recipe r
-    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', :keyword, '%')))
+    WHERE (:keyword IS NULL OR LOWER(r.recipeName) LIKE LOWER(CONCAT('%', cast(:keyword as string), '%')))
       AND (:onlyDeletable = false OR NOT EXISTS (
           SELECT 1 FROM UserRecipe ur WHERE ur.recipe = r
       ))

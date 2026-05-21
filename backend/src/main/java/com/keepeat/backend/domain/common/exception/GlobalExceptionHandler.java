@@ -45,7 +45,7 @@ public class GlobalExceptionHandler {
         errorResponse.put("status", "error");
         errorResponse.put("code", "INTERNAL_ERROR");
         errorResponse.put("message", "서버 내부 오류가 발생했습니다");
-        return ResponseEntity.badRequest().body(errorResponse);
+        return ResponseEntity.internalServerError().body(errorResponse);
     }
 
 

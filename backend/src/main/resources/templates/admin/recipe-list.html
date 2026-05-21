@@ -27,7 +27,7 @@
                    class="form-control" placeholder="레시피명 검색">
         </div>
         <div class="col-md-3">
-            <select name="sort" class="form-select">
+            <select name="sortType" class="form-select">
                 <option value="LATEST"
                         th:selected="${sort.name() == 'LATEST'}">최신순</option>
                 <option value="LIKES_DESC"
@@ -38,7 +38,7 @@
                         th:selected="${sort.name() == 'BOOKMARKED_ASC'}">등록자 적은 순</option>
             </select>
         </div>
-        <div class="col-md-3 d-flex align-items-center">
+        <div class="col-md-2 d-flex align-items-center">
             <div class="form-check">
                 <input class="form-check-input" type="checkbox" id="onlyDeletable"
                        name="onlyDeletable" value="true"
@@ -51,8 +51,8 @@
         <div class="col-md-1">
             <button type="submit" class="btn btn-secondary w-100">검색</button>
         </div>
-        <div class="col-md-1">
-            <a href="/admin/recipes" class="btn btn-outline-secondary w-100">초기화</a>
+        <div class="col-md-2">
+            <a href="/admin/recipes" class="btn btn-outline-secondary w-100 text-nowrap">초기화</a>
         </div>
     </form>
 
@@ -103,14 +103,14 @@
         <ul class="pagination justify-content-center">
             <li class="page-item" th:classappend="${page.first} ? 'disabled'">
                 <a class="page-link"
-                   th:href="@{/admin/recipes(page=${page.number - 1}, size=${page.size}, keyword=${keyword}, sort=${sort}, onlyDeletable=${onlyDeletable})}">이전</a>
+                   th:href="@{/admin/recipes(page=${page.number - 1}, size=${page.size}, keyword=${keyword}, sortType=${sort}, onlyDeletable=${onlyDeletable})}">이전</a>
             </li>
             <li class="page-item disabled">
                 <span class="page-link" th:text="|${page.number + 1} / ${page.totalPages}|"></span>
             </li>
             <li class="page-item" th:classappend="${page.last} ? 'disabled'">
                 <a class="page-link"
-                   th:href="@{/admin/recipes(page=${page.number + 1}, size=${page.size}, keyword=${keyword}, sort=${sort}, onlyDeletable=${onlyDeletable})}">다음</a>
+                   th:href="@{/admin/recipes(page=${page.number + 1}, size=${page.size}, keyword=${keyword}, sortType=${sort}, onlyDeletable=${onlyDeletable})}">다음</a>
             </li>
         </ul>
     </nav>

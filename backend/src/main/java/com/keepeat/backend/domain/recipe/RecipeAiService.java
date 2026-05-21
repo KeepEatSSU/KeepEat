@@ -65,11 +65,7 @@ public class RecipeAiService {
     }
 
 
-
-
-
-
-
+    @Transactional
     public GeneratedRecipesResponseDto generateRecipes(Long userId) {
 
         GeneratedRecipesResponseDto responseFromAi;
@@ -82,6 +78,11 @@ public class RecipeAiService {
 
         // 만료일 빠른 순으로 정렬되어 들어오므로, 같은 이름은 가장 임박한 것이 먼저 등장
         for (UserIngredient ui : userIngredients) {
+
+            // 커스텀 식재료(ingredient_id IS NULL)는 레시피 생성 후보에서 제외
+            if (ui.getIngredient() == null) {
+                continue;
+            }
 
             String categoryName = ui.getIngredient().getSubCategory().getCategory().getName();
             String name = ui.getIngredient().getName();

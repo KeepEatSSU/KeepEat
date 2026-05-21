@@ -22,7 +22,11 @@ public class OcrController {
 
     private final OcrService ocrService;
 
-    @Operation(summary = "영수증 OCR 파싱", description = "이미지에서 식재료명을 추출하고 DB 매칭 결과를 반환")
+    @Operation(
+            summary = "영수증 OCR 파싱",
+            description = "이미지에서 식재료명을 추출하고 DB 매칭 결과를 반환합니다. " +
+                    "UNMATCHED 항목은 ingredientId=null로 POST /user-ingredients에 전달하여 커스텀 식재료로 저장할 수 있습니다."
+    )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "파싱 성공"),
             @ApiResponse(responseCode = "400", description = "유효하지 않은 이미지"),

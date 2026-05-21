@@ -35,8 +35,8 @@ public class UserIngredient {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "ingredient_id", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = true)
+    @JoinColumn(name = "ingredient_id", nullable = true)
     private Ingredient ingredient;
 
     @Enumerated(EnumType.STRING)
@@ -53,7 +53,7 @@ public class UserIngredient {
 
     private String unit;
 
-    @Column(name = "custom_name")
+    @Column(name = "custom_name", length = 100)
     private String customName;
 
     @Builder

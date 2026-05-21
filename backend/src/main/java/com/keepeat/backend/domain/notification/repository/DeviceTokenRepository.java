@@ -15,4 +15,7 @@ public interface DeviceTokenRepository extends JpaRepository<DeviceToken, Long> 
 
     // 토큰 삭제 쿼리
     void deleteByToken(String token);
+
+    // 본인 소유 토큰만 삭제 (로그아웃 시 소유자 검증)
+    void deleteByUserIdAndToken(Long userId, String token);
 }

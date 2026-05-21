@@ -13,6 +13,8 @@ public interface IngredientStorageRepository extends JpaRepository<IngredientSto
 
     List<IngredientStorage> findAllByIngredientId(Long ingredientId);
 
+    List<IngredientStorage> findAllByIngredientIdIn(List<Long> ingredientIds);
+
     @Modifying
     void deleteByIngredientId(Long ingredientId);
 }

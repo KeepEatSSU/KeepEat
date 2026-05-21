@@ -2,6 +2,7 @@ services:
   db:
     image: postgres:18
     container_name: keepeat-db
+    profiles: ["local"]
     ports:
       - "${DB_PORT:-5433}:5432"
     environment:
@@ -10,6 +11,17 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - keepeat-db-data:/var/lib/postgresql
+
+  app:
+    build: .
+    container_name: keepeat-app
+    env_file:
+      - .env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    ports:
+      - "8080:8080"
+    restart: unless-stopped
 
 volumes:
   keepeat-db-data:

@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.common.exception;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -8,6 +9,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import java.util.HashMap;
 import java.util.Map;
 
+@Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -41,11 +43,16 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<?> handleException(Exception e){
+        // 클라이언트가 자기 잘못으로 오해하지 않도록 500으로 응답하고,
+        // 운영 디버깅을 위해 서버 로그에 전체 stacktrace를 남긴다.
+        log.error("Unhandled exception", e);
         Map<String, String> errorResponse = new HashMap<>();
         errorResponse.put("status", "error");
         errorResponse.put("code", "INTERNAL_ERROR");
         errorResponse.put("message", "서버 내부 오류가 발생했습니다");
+
         return ResponseEntity.internalServerError().body(errorResponse);
+
     }
 
 

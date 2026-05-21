@@ -38,9 +38,12 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
 
 
-                        .requestMatchers("/api/users/signup", "/api/users/login","/api/users/refresh", "/error", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/api/users/signup", "/api/users/login","/api/users/refresh", "/error", "/swagger-ui/**", "/v3/api-docs/**", "/actuator/health", "/actuator/health/**").permitAll()
                         .requestMatchers("/admin/login").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
+                        .requestMatchers("/api/users/send").permitAll()
+                        .requestMatchers("/api/users/verify").permitAll()
+                        .requestMatchers("/api/users/password/find").permitAll()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exception -> exception

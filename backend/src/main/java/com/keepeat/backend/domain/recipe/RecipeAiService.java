@@ -65,7 +65,6 @@ public class RecipeAiService {
     }
 
 
-    @Transactional
     public GeneratedRecipesResponseDto generateRecipes(Long userId) {
 
         GeneratedRecipesResponseDto responseFromAi;

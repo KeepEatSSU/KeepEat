@@ -49,6 +49,10 @@ jwt:
   access-expiration: 3600000
   refresh-expiration: 1209600000
 
+app:
+  oauth2:
+    redirect-uri: ${OAUTH2_REDIRECT_URI}
+
 firebase:
   key-path: ${FIREBASE_KEY_PATH:}
 

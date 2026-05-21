@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.user.service;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.Base64;
 import java.nio.charset.StandardCharsets;
 
@@ -65,13 +66,18 @@ public class AppUserService {
 
     @Transactional
     public TokenResponse login(LoginRequest request) {
-        // 이메일로 유저가 있는지 찾기
+        // 사용자 enumeration 방지: 이메일/비밀번호 실패 모두 동일 메시지로 응답.
+        // 디버깅을 위해 서버 로그에만 어떤 케이스였는지 남긴다.
         AppUser user = appUserRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new IllegalArgumentException("가입되지 않은 이메일입니다."));
+                .orElseThrow(() -> {
+                    log.warn("로그인 실패 - 미가입 이메일: {}", request.getEmail());
+                    return new IllegalArgumentException("이메일 또는 비밀번호가 일치하지 않습니다.");
+                });
 
-        // 비밀번호가 맞는지 확인 (평문 비밀번호와 DB의 암호화된 비밀번호를 비교)
+        // 비밀번호 검증
         if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
+            log.warn("로그인 실패 - 비밀번호 불일치: userId={}", user.getId());
+            throw new IllegalArgumentException("이메일 또는 비밀번호가 일치하지 않습니다.");
         }
 
         // 비밀번호까지 맞다면, 토큰 2개 발급
@@ -178,9 +184,17 @@ public class AppUserService {
         emailService.sendTemporaryPassword(email, tempPassword);
     }
 
-    // 8자리 랜덤 비밀번호 생성 헬퍼 메서드
+    // 12자리 임시 비밀번호: 영문 대소문자 + 숫자 + 일부 특수문자 (혼동되는 0/O, 1/l/I는 제외)
+    private static final char[] PASSWORD_CHARS =
+            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$".toCharArray();
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private String generateRandomPassword() {
-        return java.util.UUID.randomUUID().toString().substring(0, 8);
+        StringBuilder sb = new StringBuilder(12);
+        for (int i = 0; i < 12; i++) {
+            sb.append(PASSWORD_CHARS[SECURE_RANDOM.nextInt(PASSWORD_CHARS.length)]);
+        }
+        return sb.toString();
     }
 
     @Transactional

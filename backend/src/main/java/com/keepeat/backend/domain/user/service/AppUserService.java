@@ -133,7 +133,13 @@ public class AppUserService {
     public UserResponse getUserInfo(Long userId) {
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
-        return new UserResponse(user.getId(), user.getEmail(), user.getRole(), user.getProvider());
+        return new UserResponse(
+                user.getId(),
+                user.getEmail(),
+                user.getRole(),
+                user.getProvider(),
+                user.isNotificationEnabled()
+        );
     }
 
     public static String hashToken(String token) {

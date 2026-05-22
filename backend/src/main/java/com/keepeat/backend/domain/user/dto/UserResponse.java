@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.user.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.keepeat.backend.domain.user.entity.Role;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
@@ -11,4 +12,7 @@ public class UserResponse {
     private String email;
     private Role role;
     private String provider;
+
+    @JsonProperty("isNotificationEnabled")
+    private boolean isNotificationEnabled;
 }

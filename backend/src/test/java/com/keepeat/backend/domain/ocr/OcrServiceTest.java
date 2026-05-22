@@ -6,6 +6,8 @@ import com.keepeat.backend.domain.common.enums.StorageType;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.ingredient.Ingredient;
+import com.keepeat.backend.domain.ingredient.IngredientAlias;
+import com.keepeat.backend.domain.ingredient.IngredientAliasRepository;
 import com.keepeat.backend.domain.ingredient.IngredientRepository;
 import com.keepeat.backend.domain.ingredient.IngredientStorage;
 import com.keepeat.backend.domain.ingredient.IngredientStorageRepository;
@@ -41,6 +43,9 @@ class OcrServiceTest {
 
     @Mock
     private IngredientRepository ingredientRepository;
+
+    @Mock
+    private IngredientAliasRepository ingredientAliasRepository;
 
     @Mock
     private IngredientStorageRepository ingredientStorageRepository;
@@ -94,6 +99,8 @@ class OcrServiceTest {
                 ));
         given(ingredientRepository.findByName("알수없는식재료"))
                 .willReturn(Optional.empty());
+        given(ingredientAliasRepository.findByAliasNameIn(List.of("알수없는식재료")))
+                .willReturn(List.of());
 
         // when
         OcrParseResponse response = ocrService.parse(image);
@@ -106,6 +113,98 @@ class OcrServiceTest {
         assertThat(candidate.rawName()).isEqualTo("풀무원 알수없는식재료");
         assertThat(candidate.customName()).isEqualTo("풀무원 알수없는식재료");
         assertThat(candidate.storageOptions()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("마스터 직매칭 실패 → 별칭 매칭 성공 → 마스터 식재료로 치환되어 MATCHED 반환")
+    void parse_aliasMatch_resolvedToMaster() {
+        // given
+        MockMultipartFile image = createMockImage();
+        Ingredient beef = createIngredient(30L, "소고기");
+        IngredientAlias alias = createAlias(beef, "우육");
+
+        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
+                .willReturn(List.of(
+                        new OpenAiClient.ParsedIngredient("우육 500g", "우육", null, 500.0, "g")
+                ));
+        given(ingredientRepository.findByName("우육"))
+                .willReturn(Optional.empty());
+        given(ingredientAliasRepository.findByAliasNameIn(List.of("우육")))
+                .willReturn(List.of(alias));
+        given(ingredientStorageRepository.findAllByIngredientId(30L))
+                .willReturn(List.of(
+                        createStorage(beef, StorageType.냉장, 2, 3, Metric.Days)
+                ));
+
+        // when
+        OcrParseResponse response = ocrService.parse(image);
+
+        // then
+        assertThat(response.candidates()).hasSize(1);
+        var candidate = response.candidates().get(0);
+        assertThat(candidate.matchStatus()).isEqualTo(MatchStatus.MATCHED);
+        // 별칭이 가리키는 마스터 식재료로 치환되어야 함
+        assertThat(candidate.ingredientId()).isEqualTo(30L);
+        assertThat(candidate.ingredientName()).isEqualTo("소고기");
+        assertThat(candidate.storageOptions()).hasSize(1);
+        assertThat(candidate.storageOptions().get(0).storageType()).isEqualTo(StorageType.냉장);
+    }
+
+    @Test
+    @DisplayName("마스터에도 별칭에도 없음 → UNMATCHED 회귀 방지")
+    void parse_neitherMasterNorAlias_unmatched() {
+        // given
+        MockMultipartFile image = createMockImage();
+
+        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
+                .willReturn(List.of(
+                        new OpenAiClient.ParsedIngredient("외계식재료", "외계식재료", null, null, null)
+                ));
+        given(ingredientRepository.findByName("외계식재료"))
+                .willReturn(Optional.empty());
+        given(ingredientAliasRepository.findByAliasNameIn(List.of("외계식재료")))
+                .willReturn(List.of());
+
+        // when
+        OcrParseResponse response = ocrService.parse(image);
+
+        // then
+        assertThat(response.candidates()).hasSize(1);
+        assertThat(response.candidates().get(0).matchStatus()).isEqualTo(MatchStatus.UNMATCHED);
+        assertThat(response.candidates().get(0).ingredientId()).isNull();
+    }
+
+    @Test
+    @DisplayName("마스터 직매칭과 별칭 매칭 모두 동일한 마스터 ingredientId 반환")
+    void parse_masterAndAlias_returnSameIngredientId() {
+        // given
+        MockMultipartFile image = createMockImage();
+        Ingredient beef = createIngredient(30L, "소고기");
+        IngredientAlias alias = createAlias(beef, "우육");
+
+        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
+                .willReturn(List.of(
+                        new OpenAiClient.ParsedIngredient("소고기 200g", "소고기", null, 200.0, "g"),
+                        new OpenAiClient.ParsedIngredient("우육 300g", "우육", null, 300.0, "g")
+                ));
+        given(ingredientRepository.findByName("소고기"))
+                .willReturn(Optional.of(beef));
+        given(ingredientRepository.findByName("우육"))
+                .willReturn(Optional.empty());
+        given(ingredientAliasRepository.findByAliasNameIn(List.of("우육")))
+                .willReturn(List.of(alias));
+        given(ingredientStorageRepository.findAllByIngredientId(30L))
+                .willReturn(List.of(createStorage(beef, StorageType.냉장, 2, 3, Metric.Days)));
+
+        // when
+        OcrParseResponse response = ocrService.parse(image);
+
+        // then
+        assertThat(response.candidates()).hasSize(2);
+        assertThat(response.candidates().get(0).ingredientId()).isEqualTo(30L);
+        assertThat(response.candidates().get(1).ingredientId()).isEqualTo(30L);
+        assertThat(response.candidates().get(0).ingredientName()).isEqualTo("소고기");
+        assertThat(response.candidates().get(1).ingredientName()).isEqualTo("소고기");
     }
 
     @Test
@@ -166,5 +265,9 @@ class OcrServiceTest {
                 .max(max)
                 .metric(metric)
                 .build();
+    }
+
+    private IngredientAlias createAlias(Ingredient ingredient, String aliasName) {
+        return new IngredientAlias(ingredient, aliasName);
     }
 }

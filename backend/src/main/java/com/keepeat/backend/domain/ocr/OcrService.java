@@ -3,6 +3,8 @@ package com.keepeat.backend.domain.ocr;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.ingredient.Ingredient;
+import com.keepeat.backend.domain.ingredient.IngredientAlias;
+import com.keepeat.backend.domain.ingredient.IngredientAliasRepository;
 import com.keepeat.backend.domain.ingredient.IngredientRepository;
 import com.keepeat.backend.domain.ingredient.IngredientStorage;
 import com.keepeat.backend.domain.ingredient.IngredientStorageRepository;
@@ -11,6 +13,7 @@ import com.keepeat.backend.domain.ocr.dto.OcrParseResponse.MatchStatus;
 import com.keepeat.backend.domain.ocr.dto.OcrParseResponse.OcrIngredientCandidate;
 import com.keepeat.backend.domain.ocr.dto.OcrParseResponse.StorageOption;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -19,12 +22,14 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class OcrService {
 
     private final OpenAiClient openAiClient;
     private final IngredientRepository ingredientRepository;
+    private final IngredientAliasRepository ingredientAliasRepository;
     private final IngredientStorageRepository ingredientStorageRepository;
 
     private static final Set<String> ALLOWED_MIME_TYPES = Set.of("image/jpeg", "image/png");
@@ -65,16 +70,26 @@ public class OcrService {
     }
 
     private OcrIngredientCandidate matchIngredient(OpenAiClient.ParsedIngredient parsed) {
-        Optional<Ingredient> found = ingredientRepository.findByName(parsed.name());
+        Optional<Ingredient> master = ingredientRepository.findByName(parsed.name());
 
-        if (found.isEmpty()) {
+        if (master.isEmpty()) {
+            List<IngredientAlias> aliases = ingredientAliasRepository.findByAliasNameIn(List.of(parsed.name()));
+            if (!aliases.isEmpty()) {
+                Ingredient resolved = aliases.get(0).getIngredient();
+                log.info("OCR 별칭 매칭 → 마스터 치환: '{}' → '{}'(id={})",
+                        parsed.name(), resolved.getName(), resolved.getId());
+                master = Optional.of(resolved);
+            }
+        }
+
+        if (master.isEmpty()) {
             return new OcrIngredientCandidate(
                     parsed.raw(), parsed.customName(), parsed.quantity(), parsed.unit(),
                     MatchStatus.UNMATCHED, null, null, List.of()
             );
         }
 
-        Ingredient ingredient = found.get();
+        Ingredient ingredient = master.get();
         List<IngredientStorage> storages = ingredientStorageRepository.findAllByIngredientId(ingredient.getId());
 
         List<StorageOption> storageOptions = storages.stream()

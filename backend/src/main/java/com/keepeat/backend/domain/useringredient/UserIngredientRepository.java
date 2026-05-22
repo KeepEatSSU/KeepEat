@@ -1,9 +1,11 @@
 package com.keepeat.backend.domain.useringredient;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -41,4 +43,23 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
     // 특정 날짜(예: 3일 뒤)가 소비기한인 식재료들을 모두 찾습니다.
     @Query("SELECT ui FROM UserIngredient ui JOIN AppUser u ON ui.userId = u.id WHERE ui.expiryDate = :expiryDate AND u.deletedAt IS NULL")
     List<UserIngredient> findAllByExpiryDateAndUserNotDeleted(@Param("expiryDate") LocalDate expiryDate);
+
+    @Query("SELECT ui FROM UserIngredient ui " +
+            "LEFT JOIN FETCH ui.ingredient i " +
+            "LEFT JOIN FETCH i.subCategory sc " +
+            "LEFT JOIN FETCH sc.category c " +
+            "WHERE ui.userId = :userId " +
+            "AND ui.ingredient IS NOT NULL " +
+            "AND ui.ingredient.id IN (" +
+            "  SELECT ri.ingredient.id FROM RecipeIngredient ri WHERE ri.recipe.id = :recipeId" +
+            ") " +
+            "ORDER BY ui.expiryDate ASC NULLS LAST")
+    List<UserIngredient> findAllByUserIdAndRecipeId(@Param("userId") Long userId,
+                                                    @Param("recipeId") Long recipeId);
+
+    long countByIdInAndUserId(Collection<Long> ids, Long userId);
+
+    @Modifying
+    @Query("DELETE FROM UserIngredient ui WHERE ui.id IN :ids AND ui.userId = :userId")
+    void deleteAllByIdInAndUserId(@Param("ids") Collection<Long> ids, @Param("userId") Long userId);
 }

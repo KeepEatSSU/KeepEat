@@ -1,6 +1,7 @@
 package com.keepeat.backend.domain.useringredient;
 
 import com.keepeat.backend.domain.useringredient.dto.UserIngredientBulkCreateRequest;
+import com.keepeat.backend.domain.useringredient.dto.UserIngredientBulkDeleteRequest;
 import com.keepeat.backend.domain.useringredient.dto.UserIngredientRequest;
 import com.keepeat.backend.domain.useringredient.dto.UserIngredientResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -76,6 +77,25 @@ public class UserIngredientController {
         return ResponseEntity.ok(result);
     }
 
+    @Operation(summary = "레시피별 보유 식재료 조회",
+            description = "특정 레시피의 마스터 식재료와 매칭되는 사용자 보유 UserIngredient 행을 중복 보존하여 반환. " +
+                    "커스텀 식재료(ingredient=NULL)는 제외. 요리 완료 후 다 쓴 식재료를 선택해 삭제하는 UX에서 사용.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "조회 성공"),
+            @ApiResponse(responseCode = "204", description = "매칭되는 보유 식재료 없음"),
+            @ApiResponse(responseCode = "404", description = "레시피를 찾을 수 없음 (RECIPE_NOT_FOUND)")
+    })
+    @GetMapping("/by-recipe/{recipeId}")
+    public ResponseEntity<List<UserIngredientResponse>> findByRecipe(
+            @AuthenticationPrincipal Long userId,
+            @Parameter(description = "레시피 ID", example = "1") @PathVariable Long recipeId) {
+        List<UserIngredientResponse> result = userIngredientService.findByRecipe(userId, recipeId);
+        if (result.isEmpty()) {
+            return ResponseEntity.noContent().build();
+        }
+        return ResponseEntity.ok(result);
+    }
+
     @Operation(summary = "식재료 수정", description = "변경할 필드만 포함하여 부분 수정")
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "수정 성공"),
@@ -97,6 +117,21 @@ public class UserIngredientController {
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@AuthenticationPrincipal Long userId, @PathVariable Long id) {
         userIngredientService.delete(userId, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "식재료 다중 삭제",
+            description = "여러 개의 UserIngredient를 한 번에 삭제. ids 중 하나라도 사용자 소유가 아니면 전체 롤백.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "204", description = "삭제 성공"),
+            @ApiResponse(responseCode = "400", description = "ids 목록이 비어 있음"),
+            @ApiResponse(responseCode = "404", description = "ids 중 사용자 소유가 아닌 항목 존재 (USER_INGREDIENT_NOT_FOUND)")
+    })
+    @DeleteMapping
+    public ResponseEntity<Void> deleteMany(
+            @AuthenticationPrincipal Long userId,
+            @RequestBody @Valid UserIngredientBulkDeleteRequest request) {
+        userIngredientService.deleteMany(userId, request.ids());
         return ResponseEntity.noContent().build();
     }
 }

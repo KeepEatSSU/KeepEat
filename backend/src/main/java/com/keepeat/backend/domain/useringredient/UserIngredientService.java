@@ -8,6 +8,7 @@ import com.keepeat.backend.domain.ingredient.Ingredient;
 import com.keepeat.backend.domain.ingredient.IngredientRepository;
 import com.keepeat.backend.domain.ingredient.IngredientStorage;
 import com.keepeat.backend.domain.ingredient.IngredientStorageRepository;
+import com.keepeat.backend.domain.recipe.repository.RecipeRepository;
 import com.keepeat.backend.domain.useringredient.dto.UserIngredientCreateRequest;
 import com.keepeat.backend.domain.useringredient.dto.UserIngredientRequest;
 import com.keepeat.backend.domain.useringredient.dto.UserIngredientResponse;
@@ -27,6 +28,7 @@ public class UserIngredientService {
     private final UserIngredientRepository userIngredientRepository;
     private final IngredientRepository ingredientRepository;
     private final IngredientStorageRepository ingredientStorageRepository;
+    private final RecipeRepository recipeRepository;
 
     public List<UserIngredientResponse> findAll(Long userId) {
         return userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId)
@@ -37,6 +39,16 @@ public class UserIngredientService {
 
     public List<UserIngredientResponse> search(Long userId, String q) {
         return userIngredientRepository.searchByIngredientName(userId, q)
+                .stream()
+                .map(ui -> UserIngredientResponse.of(ui, calculateDaysLeft(ui.getExpiryDate())))
+                .toList();
+    }
+
+    public List<UserIngredientResponse> findByRecipe(Long userId, Long recipeId) {
+        if (!recipeRepository.existsById(recipeId)) {
+            throw new KeepEatException(ErrorCode.RECIPE_NOT_FOUND);
+        }
+        return userIngredientRepository.findAllByUserIdAndRecipeId(userId, recipeId)
                 .stream()
                 .map(ui -> UserIngredientResponse.of(ui, calculateDaysLeft(ui.getExpiryDate())))
                 .toList();
@@ -105,6 +117,15 @@ public class UserIngredientService {
                 .orElseThrow(() -> new KeepEatException(ErrorCode.USER_INGREDIENT_NOT_FOUND));
 
         userIngredientRepository.delete(ui);
+    }
+
+    @Transactional
+    public void deleteMany(Long userId, List<Long> ids) {
+        long matched = userIngredientRepository.countByIdInAndUserId(ids, userId);
+        if (matched != ids.size()) {
+            throw new KeepEatException(ErrorCode.USER_INGREDIENT_NOT_FOUND);
+        }
+        userIngredientRepository.deleteAllByIdInAndUserId(ids, userId);
     }
 
     private LocalDate calculateExpiryDate(Long ingredientId, StorageType storageType, LocalDate purchaseDate) {

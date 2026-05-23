@@ -10,6 +10,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -27,11 +28,12 @@ public class IngredientExpiryScheduler {
     public void checkExpiringIngredients() {
         log.info("⏰ [소비기한 임박 알림 스케줄러] 작동 시작!");
 
-        // 오늘 기준으로 딱 3일 남은 날짜 계산
-        LocalDate targetDate = LocalDate.now().plusDays(3);
+        // 오늘(D-day)부터 3일 뒤(D-3)까지의 범위를 알림 대상으로 한다.
+        LocalDate today = LocalDate.now();
+        LocalDate targetDate = today.plusDays(3);
 
-        // 소비기한이 딱 3일 남은 모든 식재료를 DB에서 찾기
-        List<UserIngredient> expiringList = userIngredientRepository.findAllByExpiryDateAndUserNotDeleted(targetDate);
+        List<UserIngredient> expiringList =
+                userIngredientRepository.findAllByExpiryDateBetweenAndUserNotDeleted(today, targetDate);
 
         // 유저별로 임박 식재료를 묶어서 통합 알림 1건씩만 보낸다 (푸시 폭탄 방지)
         Map<Long, List<UserIngredient>> groupedByUser = expiringList.stream()
@@ -41,8 +43,11 @@ public class IngredientExpiryScheduler {
             Long userId = entry.getKey();
             List<UserIngredient> userItems = entry.getValue();
 
+            // 한 유저의 식재료들 사이 잔여일수가 섞여 있을 때는 가장 급한 항목(min) 기준으로 본문 구성
+            long minDays = minDaysLeft(today, userItems);
+
             String title = buildTitle(userItems.size());
-            String body = buildBody(userItems);
+            String body = buildBody(userItems, minDays);
             // 식재료 1개일 때는 해당 상세로, 여러 개일 때는 임박 목록 화면으로 라우팅하도록 targetId를 비움
             String targetId = userItems.size() == 1
                     ? String.valueOf(userItems.get(0).getId())
@@ -73,11 +78,12 @@ public class IngredientExpiryScheduler {
         return String.format("⏳ 식재료 %d개 소비기한 임박!", itemCount);
     }
 
-    private String buildBody(List<UserIngredient> items) {
-        // 1개: 기존 메시지 그대로 유지 (회귀 방지)
+    private String buildBody(List<UserIngredient> items, long minDays) {
         if (items.size() == 1) {
             String itemName = resolveItemName(items.get(0));
-            return String.format("냉장고 속 [%s]의 소비기한이 3일 남았습니다. 구출해 주세요!", itemName);
+            return minDays == 0
+                    ? String.format("냉장고 속 [%s]의 소비기한이 오늘까지입니다. 오늘 안에 드세요!", itemName)
+                    : String.format("냉장고 속 [%s]의 소비기한이 %d일 남았습니다. 구출해 주세요!", itemName, minDays);
         }
 
         // 2개 이상: 앞 2개만 노출하고 나머지는 "외 N개"로 축약
@@ -87,11 +93,22 @@ public class IngredientExpiryScheduler {
                 .collect(Collectors.joining(", "));
 
         if (items.size() == 2) {
-            return String.format("냉장고 속 %s의 소비기한이 3일 남았습니다. 빨리 구출해 주세요!", firstTwo);
+            return minDays == 0
+                    ? String.format("냉장고 속 %s의 소비기한이 오늘까지입니다. 빨리 구출해 주세요!", firstTwo)
+                    : String.format("냉장고 속 %s의 소비기한이 %d일 남았습니다. 빨리 구출해 주세요!", firstTwo, minDays);
         }
 
         int remaining = items.size() - 2;
-        return String.format("냉장고 속 %s 외 %d개의 소비기한이 3일 남았습니다. 빨리 구출해 주세요!",
-                firstTwo, remaining);
+        return minDays == 0
+                ? String.format("냉장고 속 %s 외 %d개의 소비기한이 오늘까지입니다. 빨리 구출해 주세요!", firstTwo, remaining)
+                : String.format("냉장고 속 %s 외 %d개의 소비기한이 %d일 남았습니다. 빨리 구출해 주세요!", firstTwo, remaining, minDays);
+    }
+
+    // 한 유저가 보유한 임박 식재료들 중 가장 가까운 만료일까지의 잔여일수
+    private long minDaysLeft(LocalDate today, List<UserIngredient> items) {
+        return items.stream()
+                .mapToLong(item -> ChronoUnit.DAYS.between(today, item.getExpiryDate()))
+                .min()
+                .orElse(0L);
     }
 }

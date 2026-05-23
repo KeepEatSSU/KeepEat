@@ -105,6 +105,22 @@ public class AppUserController {
     }
 
 
+    // DELETE http://localhost:8080/api/users/me
+    @Operation(summary = "회원 탈퇴",
+            description = "현재 로그인한 사용자의 계정을 비활성화(soft delete)합니다. " +
+                    "LOCAL 가입자는 본인 확인을 위해 현재 비밀번호 입력이 필수이며, " +
+                    "OAuth 가입자(GOOGLE 등)는 body 없이 호출 가능합니다. " +
+                    "탈퇴 시 푸시 토큰과 refresh token은 즉시 정리되며, " +
+                    "같은 이메일로 추후 재가입 가능합니다.")
+    @DeleteMapping("/me")
+    public ResponseEntity<Void> deleteAccount(
+            @AuthenticationPrincipal Long userId,
+            @RequestBody(required = false) UserDeleteRequest request
+    ) {
+        appUserService.deleteUser(userId, request);
+        return ResponseEntity.noContent().build();
+    }
+
     // 인증번호 발송 API
     @Operation(summary = "회원가입 이메일 인증번호 전송", description = "회원가입 시 로그인 인증을 진행합니다.")
     @PostMapping("/send")

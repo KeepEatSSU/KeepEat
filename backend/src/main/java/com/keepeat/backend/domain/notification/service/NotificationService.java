@@ -123,4 +123,11 @@ public class NotificationService {
         int updatedCount = notificationRepository.markAllAsReadByUserId(userId);
         log.info("유저 {}의 알림 {}건이 모두 읽음 처리되었습니다.", userId, updatedCount);
     }
+
+    @Transactional
+    public void markAllAsReadByType(Long userId, NotificationType type) {
+        // 특정 타입 알림만 골라서 한 번에 읽음 처리
+        int updatedCount = notificationRepository.markAllAsReadByUserIdAndType(userId, type);
+        log.info("유저 {}의 {} 타입 알림 {}건이 모두 읽음 처리되었습니다.", userId, type, updatedCount);
+    }
 }

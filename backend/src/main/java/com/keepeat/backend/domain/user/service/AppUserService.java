@@ -6,6 +6,7 @@ import java.security.SecureRandom;
 import java.util.Base64;
 import java.nio.charset.StandardCharsets;
 
+import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
 import com.keepeat.backend.domain.security.JwtProvider;
 import com.keepeat.backend.domain.user.dto.*;
@@ -31,6 +32,9 @@ public class AppUserService {
     private final UserRecipeRepository userRecipeRepository;
     private final EmailAuthRepository emailAuthRepository;
     private final EmailService emailService;
+    private final DeviceTokenRepository deviceTokenRepository;
+
+    private static final String LOCAL_PROVIDER = "LOCAL";
 
     @Transactional
     public Long signUp(SignUpRequest request) {
@@ -153,12 +157,32 @@ public class AppUserService {
     }
 
     @Transactional
-    public void deleteUser(Long userId) {
+    public void deleteUser(Long userId, UserDeleteRequest request) {
 
-        // 유저 삭제
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+
+        // LOCAL 가입자는 본인 확인을 위해 현재 비밀번호 재검증.
+        // OAuth(GOOGLE 등) 가입자는 외부 인증으로 본인 확인된 상태이므로 password 불필요.
+        if (LOCAL_PROVIDER.equals(user.getProvider())) {
+            if (request == null || request.password() == null || request.password().isBlank()) {
+                throw new IllegalArgumentException("탈퇴를 위해서는 현재 비밀번호 입력이 필요합니다.");
+            }
+            if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+                throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
+            }
+        }
+
+        // 1) 푸시 토큰 즉시 정리 — 탈퇴 후 푸시 알림이 가지 않도록 차단
+        deviceTokenRepository.deleteAllByUserId(userId);
+
+        // 2) email 변조 + refresh token 정리 — 같은 이메일 재가입 허용 + 토큰 무효화
+        user.markAsDeleted();
+
+        // 3) soft delete — @SQLDelete가 deleted_at 컬럼을 채움
         appUserRepository.delete(user);
+
+        log.info("👋 유저 ID [{}] 탈퇴 완료 (soft delete, provider={})", userId, user.getProvider());
     }
 
     @Transactional

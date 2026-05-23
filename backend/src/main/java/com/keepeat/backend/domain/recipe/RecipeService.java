@@ -44,7 +44,6 @@ public class RecipeService {
     private final AppUserRepository appUserRepository;
     private final IngredientMappingService ingredientMappingService;
     private final TransactionTemplate transactionTemplate;
-    private final com.keepeat.backend.domain.notification.service.NotificationService notificationService;
     private final RecipeReactionRepository recipeReactionRepository;
 
     // 레시피 데이터들 받아서 레시피 저장 하고 관심 레시피 등록
@@ -246,7 +245,7 @@ public class RecipeService {
         return response;
     }
 
-    // 요리 완료 처리 및 구출 응원 알림 발송
+    // 요리 완료 처리
     @Transactional
     public void completeCooking(Long userId, Long recipeId) {
 
@@ -260,29 +259,9 @@ public class RecipeService {
                 .orElseThrow(() -> new KeepEatException(ErrorCode.RECIPE_NOT_BOOKMARKED));
 
         // -------------------------------------------------------------
-        // TODO: 향후 여기에 '요리 기록(CookingHistory)' DB에 저장하거나,
-        // 사용한 식재료(UserIngredient)를 냉장고에서 차감하는 로직이 들어갈 자리입니다.
+        // TODO: 사용한 식재료(UserIngredient) 차감 로직이 들어갈 자리입니다.
+        // 차감은 UserIngredientController 쪽에서 처리 예정.
         // -------------------------------------------------------------
-
-        // 2. 알림 발송 로직 (게미피케이션)
-        LocalDate mondayOfThisWeek = LocalDate.now().with(java.time.DayOfWeek.MONDAY);
-
-        // ※ 주의: 현재 UserRecipe는 '북마크' 용도이므로 정확한 요리 횟수를 세려면 별도 테이블이 필요합니다.
-        // 임시로 알림이 잘 가는지 확인하기 위해 횟수를 하드코딩해 둘게요!
-        int rescueCount = 3; // (나중에 DB 쿼리로 교체할 부분)
-
-        if (rescueCount == 1 || rescueCount % 3 == 0) {
-            String title = "🎉 식재료 구출 대성공!";
-            String body = String.format("이번 주 최고예요! KeepEat과 함께 버려질 뻔한 식재료들을 %d번이나 무사히 구출했어요!", rescueCount);
-
-            notificationService.sendNotification(
-                    userId,
-                    title,
-                    body,
-                    com.keepeat.backend.domain.notification.entity.NotificationType.NOTICE, // 또는 GAMIFICATION
-                    String.valueOf(recipeId)
-            );
-        }
     }
 
     @Transactional(readOnly = true)

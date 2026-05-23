@@ -18,4 +18,7 @@ public interface DeviceTokenRepository extends JpaRepository<DeviceToken, Long> 
 
     // 본인 소유 토큰만 삭제 (로그아웃 시 소유자 검증)
     void deleteByUserIdAndToken(Long userId, String token);
+
+    // 회원 탈퇴 시 해당 유저의 모든 푸시 토큰 즉시 정리 (탈퇴 후 푸시 송신 차단)
+    void deleteAllByUserId(Long userId);
 }

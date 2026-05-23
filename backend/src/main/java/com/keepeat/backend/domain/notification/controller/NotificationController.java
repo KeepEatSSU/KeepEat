@@ -3,6 +3,7 @@ package com.keepeat.backend.domain.notification.controller;
 import com.keepeat.backend.domain.notification.dto.DeviceTokenRequest;
 import com.keepeat.backend.domain.notification.dto.NotificationPageResponse;
 import com.keepeat.backend.domain.notification.dto.NotificationResponse;
+import com.keepeat.backend.domain.notification.entity.NotificationType;
 import com.keepeat.backend.domain.notification.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -82,6 +83,17 @@ public class NotificationController {
     public ResponseEntity<Void> markAllAsRead(@AuthenticationPrincipal Long userId) {
 
         notificationService.markAllAsRead(userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "타입별 알림 일괄 읽음 처리",
+            description = "지정한 타입(NOTICE / EXPIRY_SOON / RECIPE_READY)의 알림만 모두 읽음 상태로 변경합니다.")
+    @PatchMapping("/read-all/{type}")
+    public ResponseEntity<Void> markAllAsReadByType(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable("type") NotificationType type) {
+
+        notificationService.markAllAsReadByType(userId, type);
         return ResponseEntity.noContent().build();
     }
 }

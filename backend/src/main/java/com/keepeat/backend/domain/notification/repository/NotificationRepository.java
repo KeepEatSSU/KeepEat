@@ -1,6 +1,7 @@
 package com.keepeat.backend.domain.notification.repository;
 
 import com.keepeat.backend.domain.notification.entity.Notification;
+import com.keepeat.backend.domain.notification.entity.NotificationType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import org.springframework.data.jpa.repository.Modifying;
@@ -20,6 +21,12 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Modifying
     @Query("UPDATE Notification n SET n.isRead = true WHERE n.userId = :userId AND n.isRead = false")
     int markAllAsReadByUserId(@Param("userId") Long userId);
+
+    // 특정 타입의 안 읽은 알림만 한 번에 읽음 처리 (예: EXPIRY_SOON 전체 읽음)
+    @Modifying
+    @Query("UPDATE Notification n SET n.isRead = true " +
+           "WHERE n.userId = :userId AND n.notificationType = :type AND n.isRead = false")
+    int markAllAsReadByUserIdAndType(@Param("userId") Long userId, @Param("type") NotificationType type);
 
     @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND (cast(:cursor as long) IS NULL OR n.id < :cursor) ORDER BY n.id DESC")
     List<Notification> findNotificationsByCursor(

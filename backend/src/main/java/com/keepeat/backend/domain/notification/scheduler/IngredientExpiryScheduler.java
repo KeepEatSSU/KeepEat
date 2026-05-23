@@ -8,11 +8,11 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Component
@@ -33,23 +33,65 @@ public class IngredientExpiryScheduler {
         // 소비기한이 딱 3일 남은 모든 식재료를 DB에서 찾기
         List<UserIngredient> expiringList = userIngredientRepository.findAllByExpiryDateAndUserNotDeleted(targetDate);
 
-        // 찾은 식재료들의 주인(User)에게 각각 알림 쏘기
-        for (UserIngredient item : expiringList) {
-            String title = "⏳ 식재료 소비기한 임박!";
-            // 식재료에 커스텀 이름이 있으면 그걸 쓰고, 없으면 원래 이름을 쓰도록 처리
-            String itemName = item.getCustomName() != null ? item.getCustomName() : "등록된 식재료";
-            String body = String.format("냉장고 속 [%s]의 소비기한이 3일 남았습니다. 구출해 주세요!", itemName);
+        // 유저별로 임박 식재료를 묶어서 통합 알림 1건씩만 보낸다 (푸시 폭탄 방지)
+        Map<Long, List<UserIngredient>> groupedByUser = expiringList.stream()
+                .collect(Collectors.groupingBy(UserIngredient::getUserId));
 
-            // 알림 전송 (Type은 INGREDIENT_EXPIRY, targetId는 해당 식재료의 ID)
+        for (Map.Entry<Long, List<UserIngredient>> entry : groupedByUser.entrySet()) {
+            Long userId = entry.getKey();
+            List<UserIngredient> userItems = entry.getValue();
+
+            String title = buildTitle(userItems.size());
+            String body = buildBody(userItems);
+            // 식재료 1개일 때는 해당 상세로, 여러 개일 때는 임박 목록 화면으로 라우팅하도록 targetId를 비움
+            String targetId = userItems.size() == 1
+                    ? String.valueOf(userItems.get(0).getId())
+                    : null;
+
             notificationService.sendNotification(
-                    item.getUserId(),
+                    userId,
                     title,
                     body,
                     NotificationType.EXPIRY_SOON,
-                    String.valueOf(item.getId())
+                    targetId
             );
         }
 
-        log.info("⏰ [소비기한 임박 알림 스케줄러] 총 {}건의 알림 발송 완료!", expiringList.size());
+        log.info("⏰ [소비기한 임박 알림 스케줄러] 총 {}명의 유저에게 통합 알림 발송 완료 (임박 식재료 {}건)",
+                groupedByUser.size(), expiringList.size());
+    }
+
+    // 식재료 이름: customName 우선, 없으면 기본 문구
+    private String resolveItemName(UserIngredient item) {
+        return item.getCustomName() != null ? item.getCustomName() : "등록된 식재료";
+    }
+
+    private String buildTitle(int itemCount) {
+        if (itemCount == 1) {
+            return "⏳ 식재료 소비기한 임박!";
+        }
+        return String.format("⏳ 식재료 %d개 소비기한 임박!", itemCount);
+    }
+
+    private String buildBody(List<UserIngredient> items) {
+        // 1개: 기존 메시지 그대로 유지 (회귀 방지)
+        if (items.size() == 1) {
+            String itemName = resolveItemName(items.get(0));
+            return String.format("냉장고 속 [%s]의 소비기한이 3일 남았습니다. 구출해 주세요!", itemName);
+        }
+
+        // 2개 이상: 앞 2개만 노출하고 나머지는 "외 N개"로 축약
+        String firstTwo = items.stream()
+                .limit(2)
+                .map(item -> "[" + resolveItemName(item) + "]")
+                .collect(Collectors.joining(", "));
+
+        if (items.size() == 2) {
+            return String.format("냉장고 속 %s의 소비기한이 3일 남았습니다. 빨리 구출해 주세요!", firstTwo);
+        }
+
+        int remaining = items.size() - 2;
+        return String.format("냉장고 속 %s 외 %d개의 소비기한이 3일 남았습니다. 빨리 구출해 주세요!",
+                firstTwo, remaining);
     }
 }

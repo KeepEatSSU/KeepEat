@@ -20,7 +20,6 @@ public class AppUser {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id; // BIGINT에 매칭됨
 
-    // length=320: 탈퇴 시 "deleted_<timestamp>_<원래이메일>" 형태로 변조하여 unique 제약을 회피하므로 여유 길이 확보
     @Column(nullable = false, unique = true, length = 320)
     private String email;
 
@@ -84,14 +83,6 @@ public class AppUser {
         this.password = newPassword;
     }
 
-    /**
-     * 회원 탈퇴 직전에 호출.
-     * - email을 변조해 unique 제약을 비워 같은 이메일 재가입을 허용
-     * - refresh token도 같이 정리 (탈퇴 후 토큰 재사용 차단)
-     *
-     * 이 메서드 호출 후 {@code repository.delete(user)}를 부르면 @SQLDelete가
-     * deleted_at 컬럼을 채워 soft delete를 완료한다.
-     */
     public void markAsDeleted() {
         this.email = "deleted_" + System.currentTimeMillis() + "_" + this.email;
         this.refreshToken = null;

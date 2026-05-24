@@ -140,6 +140,7 @@ public class AppUserService {
         return new UserResponse(
                 user.getId(),
                 user.getEmail(),
+                user.getNickname(),
                 user.getRole(),
                 user.getProvider(),
                 user.isNotificationEnabled()
@@ -178,9 +179,7 @@ public class AppUserService {
 
         // 2) email 변조 + refresh token 정리 — 같은 이메일 재가입 허용 + 토큰 무효화
         user.markAsDeleted();
-        // delete() 마킹 시 Hibernate가 dirty UPDATE를 생략할 수 있어,
-        // markAsDeleted의 변경(email 변조)을 명시적으로 먼저 DB에 반영해야 한다.
-        // 이게 빠지면 재가입 시 email unique 제약 위반으로 500 에러 발생.
+
         appUserRepository.flush();
 
         // 3) soft delete — @SQLDelete가 deleted_at 컬럼을 채움

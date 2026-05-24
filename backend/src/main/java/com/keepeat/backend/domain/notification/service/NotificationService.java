@@ -41,21 +41,21 @@ public class NotificationService {
     @Transactional
     public void sendNotification(Long userId, String title, String body, NotificationType type, String targetId) {
 
-        // 1. 유저 정보 조회 (소문자 appUserRepository 사용!)
+        // 유저 정보 조회
         AppUser user = appUserRepository.findById(userId)
                 .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
 
-        // 2. 기획 반영: 유저 알림 설정과 무관하게 히스토리(종 모양 버튼용)는 무조건 DB에 저장합니다.
+        // 유저 알림 설정과 무관하게 히스토리(종 모양 버튼용)는 무조건 DB에 저장
         Notification notification = new Notification(userId, title, body, type, targetId);
         notificationRepository.save(notification);
 
-        // 3. 기획 반영: 유저가 알림을 껐다면 여기서 메서드를 종료합니다. (푸시 안 쏨)
+        // 유저가 알림을 껐다면 여기서 메서드를 종료 (푸시 안 쏨)
         if (!user.isNotificationEnabled()) {
             log.info("유저 {}는 알림을 끈 상태입니다. 히스토리만 저장하고 푸시 알림은 생략합니다.", userId);
             return;
         }
 
-        // 4. 알림이 켜져 있는 유저라면 기기 토큰들을 꺼내서 엑스포로 푸시 발송!
+        // 알림이 켜져 있는 유저라면 기기 토큰들을 꺼내서 엑스포로 푸시 발송
         List<DeviceToken> tokens = deviceTokenRepository.findAllByUserId(userId);
         for (DeviceToken deviceToken : tokens) {
             PushSendRequest request = new PushSendRequest(deviceToken.getToken(), title, body, type, targetId);
@@ -81,7 +81,6 @@ public class NotificationService {
 
         // 엔티티를 DTO로 변환
         List<NotificationResponse> notificationResponses = notifications.stream()
-                // .map(n -> new NotificationResponse(n.getId(), n.getTitle(), ...)) // DTO 생성 로직에 맞게 수정하세요!
                 .map(NotificationResponse::from)
                 .toList();
 
@@ -129,5 +128,52 @@ public class NotificationService {
         // 특정 타입 알림만 골라서 한 번에 읽음 처리
         int updatedCount = notificationRepository.markAllAsReadByUserIdAndType(userId, type);
         log.info("유저 {}의 {} 타입 알림 {}건이 모두 읽음 처리되었습니다.", userId, type, updatedCount);
+    }
+
+    @Transactional
+    public void deleteNotification(Long notificationId, Long userId) {
+        // 본인 소유 알림만 삭제. 영향 받은 row가 0이면 존재하지 않거나 권한 없음.
+        int deleted = notificationRepository.deleteByIdAndUserId(notificationId, userId);
+        if (deleted == 0) {
+            throw new IllegalArgumentException("존재하지 않거나 권한이 없는 알림입니다.");
+        }
+        log.info("유저 {}가 알림 {} 1건을 삭제했습니다.", userId, notificationId);
+    }
+
+    @Transactional
+    public void deleteNotifications(List<Long> ids, Long userId) {
+        // 본인 소유 알림만 삭제. 남의 ID가 섞여있어도 조용히 걸러진다.
+        int deleted = notificationRepository.deleteAllByIdInAndUserId(ids, userId);
+        log.info("유저 {}가 알림 {}건을 일괄 삭제했습니다. (요청 {}건 중)", userId, deleted, ids.size());
+    }
+
+    /**
+     * 프론트엔드 알림 검증용. 자기 자신에게 즉시 알림 1건 발사
+     * title/message가 비어있으면 타입별 기본값 사용
+     * 기존 sendNotification을 재사용하므로 실제 알림 발사 흐름과 동일하게 동작
+     */
+    @Transactional
+    public void sendTestNotification(Long userId, NotificationType type, String title, String message) {
+        String resolvedTitle = (title != null && !title.isBlank()) ? title : defaultTitle(type);
+        String resolvedBody = (message != null && !message.isBlank()) ? message : defaultBody(type);
+
+        sendNotification(userId, resolvedTitle, resolvedBody, type, null);
+        log.info("🧪 유저 {} 에게 테스트 알림 발사 (type={})", userId, type);
+    }
+
+    private String defaultTitle(NotificationType type) {
+        return switch (type) {
+            case NOTICE -> "📢 [TEST] 공지사항";
+            case EXPIRY_SOON -> "⏳ [TEST] 식재료 소비기한 임박";
+            case RECIPE_READY -> "🍳 [TEST] AI 레시피 생성 완료";
+        };
+    }
+
+    private String defaultBody(NotificationType type) {
+        return switch (type) {
+            case NOTICE -> "테스트 공지사항입니다.";
+            case EXPIRY_SOON -> "테스트 알림입니다. 냉장고 속 식재료의 소비기한이 임박했습니다.";
+            case RECIPE_READY -> "테스트 알림입니다. AI 레시피가 준비되었습니다.";
+        };
     }
 }

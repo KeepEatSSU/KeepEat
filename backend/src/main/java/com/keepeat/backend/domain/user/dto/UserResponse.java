@@ -11,6 +11,7 @@ import lombok.Getter;
 public class UserResponse {
     private Long id;
     private String email;
+    private String nickname;
     private Role role;
     private String provider;
 

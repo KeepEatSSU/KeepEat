@@ -83,6 +83,11 @@ public class RecipeAiService {
                 continue;
             }
 
+            // 소비기한이 이미 지난 식재료는 레시피 생성 후보에서 제외 (NULL은 무기한 취급)
+            if (ui.getExpiryDate() != null && ui.getExpiryDate().isBefore(LocalDate.now())) {
+                continue;
+            }
+
             String categoryName = ui.getIngredient().getSubCategory().getCategory().getName();
             String name = ui.getIngredient().getName();
 

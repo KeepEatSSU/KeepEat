@@ -151,3 +151,10 @@ jobs:
             echo "Health check failed after 120s"
             docker compose logs app --tail=200
             exit 1
+
+      - name: Notify Slack deploy result
+        if: always()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"Deploy ${{ job.status }}: ${{ github.repository }} / ${{ github.ref_name }} / ${{ github.sha }}\"}" \
+            "${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }}"

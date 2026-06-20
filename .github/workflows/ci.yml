@@ -17,6 +17,22 @@ jobs:
   build-test:
     name: Build & Test (Gradle)
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: keepeat_test
+          POSTGRES_USER: keepeat
+          POSTGRES_PASSWORD: keepeat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U keepeat -d keepeat_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     defaults:
       run:
         working-directory: backend

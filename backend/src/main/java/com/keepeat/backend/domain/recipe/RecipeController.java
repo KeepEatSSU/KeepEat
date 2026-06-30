@@ -3,6 +3,7 @@ package com.keepeat.backend.domain.recipe;
 import com.keepeat.backend.domain.recipe.dto.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -50,10 +51,10 @@ public class RecipeController {
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "레시피 5개 조회 성공"),
-            @ApiResponse(responseCode = "409", description = "아직 생성 중 (RECIPE_GENERATING)"),
-            @ApiResponse(responseCode = "404", description = "생성 요청 내역 없음 (RECIPE_JOB_NOT_FOUND)"),
-            @ApiResponse(responseCode = "502", description = "AI 호출 실패 (AI_API_FAILURE)"),
-            @ApiResponse(responseCode = "500", description = "AI 응답 파싱 실패 (AI_RESPONSE_PARSE_FAILURE)")
+            @ApiResponse(responseCode = "409", description = "아직 생성 중 (RECIPE_GENERATING)", content = @Content),
+            @ApiResponse(responseCode = "404", description = "생성 요청 내역 없음 (RECIPE_JOB_NOT_FOUND)", content = @Content),
+            @ApiResponse(responseCode = "502", description = "AI 호출 실패 (AI_API_FAILURE)", content = @Content),
+            @ApiResponse(responseCode = "500", description = "AI 응답 파싱 실패 (AI_RESPONSE_PARSE_FAILURE)", content = @Content)
     })
     @GetMapping("/api/v1/recipes/result")
     public ResponseEntity<GeneratedRecipesResponseDto> getGenerationResult(

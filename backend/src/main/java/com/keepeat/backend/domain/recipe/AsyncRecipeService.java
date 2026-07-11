@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.recipe;
 
+import org.slf4j.MDC;
 import tools.jackson.databind.ObjectMapper;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
@@ -73,51 +74,54 @@ public class AsyncRecipeService {
 
     @Async("recipeAiExecutor")
     public void processGeneration(Long userId, String userPrompt) {
-
-        GeneratedRecipesResponseDto responseFromAi;
-        try {
-            responseFromAi = chatClient.prompt()
-                    .user(userPrompt)
-                    .call()
-                    .entity(GeneratedRecipesResponseDto.class);
-        } catch (TransientAiException | NonTransientAiException e) {
-            log.error("AI 호출 실패 - userId: {}, 원인: {}", userId, e.getMessage(), e);
-            updateFailed(userId, ErrorCode.AI_API_FAILURE, e.getMessage());
-            return;
-        } catch (Exception e) {
-            log.error("레시피 생성 처리 실패 - userId: {}", userId, e);
-            updateFailed(userId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, e.getMessage());
-            return;
-        }
-
-
-        if (responseFromAi == null || responseFromAi.recipes() == null || responseFromAi.recipes().isEmpty()) {
-            log.error("AI 응답이 비어있음 - userId: {}", userId);
-            updateFailed(userId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, "AI 응답이 비어있음");
-            return;
-        }
+        MDC.put("userId", String.valueOf(userId));
+        try{
+            GeneratedRecipesResponseDto responseFromAi;
+            try {
+                responseFromAi = chatClient.prompt()
+                        .user(userPrompt)
+                        .call()
+                        .entity(GeneratedRecipesResponseDto.class);
+            } catch (TransientAiException | NonTransientAiException e) {
+                log.error("[{}] AI 호출 실패", ErrorCode.AI_API_FAILURE.name(), e);
+                updateFailed(userId, ErrorCode.AI_API_FAILURE, e.getMessage());
+                return;
+            } catch (Exception e) {
+                log.error("[{}] 레시피 생성 처리 실패", ErrorCode.AI_RESPONSE_PARSE_FAILURE.name(), e);
+                updateFailed(userId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, e.getMessage());
+                return;
+            }
 
 
-        try {
-            String resultJson = objectMapper.writeValueAsString(responseFromAi);
-            transactionTemplate.executeWithoutResult(status ->
-                    recipeGenerationJobRepository.findByUserId(userId)
-                            .ifPresent(job -> job.done(resultJson))
+            if (responseFromAi == null || responseFromAi.recipes() == null || responseFromAi.recipes().isEmpty()) {
+                log.error("[{}] AI 응답이 비어있음", ErrorCode.AI_RESPONSE_PARSE_FAILURE.name());
+                updateFailed(userId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, "AI 응답이 비어있음");
+                return;
+            }
+
+
+            try {
+                String resultJson = objectMapper.writeValueAsString(responseFromAi);
+                transactionTemplate.executeWithoutResult(status ->
+                        recipeGenerationJobRepository.findByUserId(userId)
+                                .ifPresent(job -> job.done(resultJson))
+                );
+            } catch (Exception e) {
+                log.error("[{}] 결과 직렬화/저장 실패", ErrorCode.AI_RESPONSE_PARSE_FAILURE.name(), e);
+                updateFailed(userId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, e.getMessage());
+                return;
+            }
+
+            notificationService.sendNotification(
+                    userId,
+                    "🍳 AI 레시피 생성 완료!",
+                    "가지고 계신 식재료로 맛있는 요리를 만들어 보세요.",
+                    NotificationType.RECIPE_READY,
+                    null
             );
-        } catch (Exception e) {
-            log.error("결과 직렬화/저장 실패 - userId: {}", userId, e);
-            updateFailed(userId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, e.getMessage());
-            return;
+        } finally {
+            MDC.clear();
         }
-
-
-        notificationService.sendNotification(
-                userId,
-                "🍳 AI 레시피 생성 완료!",
-                "가지고 계신 식재료로 맛있는 요리를 만들어 보세요.",
-                NotificationType.RECIPE_READY,
-                null
-        );
     }
 
     private void updateFailed(Long userId, ErrorCode code, String message) {

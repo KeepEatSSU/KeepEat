@@ -111,8 +111,7 @@ public class RecipeAiService {
                 try {
                     return objectMapper.readValue(job.getResultJson(), GeneratedRecipesResponseDto.class);
                 } catch (Exception e) {
-                    log.error("결과 역직렬화 실패 - userId: {}", userId, e);
-                    throw new KeepEatException(ErrorCode.AI_RESPONSE_PARSE_FAILURE);
+                    throw new KeepEatException(ErrorCode.AI_RESPONSE_PARSE_FAILURE, e);
                 }
             }
             case FAILED -> throw new KeepEatException(job.getErrorCode());

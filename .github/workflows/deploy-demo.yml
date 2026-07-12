@@ -1,6 +1,12 @@
 name: Deploy Demo to Oracle
 
 on:
+  push:
+    branches:
+      - dev
+    paths:
+      - 'backend/**'
+      - '.github/workflows/deploy-demo.yml'
   workflow_dispatch:
 
 concurrency:

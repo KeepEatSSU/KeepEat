@@ -5,7 +5,7 @@ import lombok.AccessLevel;
 import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
-import java.time.LocalDateTime;
+import java.time.Instant;
 
 @Entity
 @Table(name = "notification")
@@ -33,20 +33,28 @@ public class Notification {
     @Column
     private String targetId; // 목적지 아이템의 DB ID (예: OCR 결과 ID, 식재료 ID)
 
+    @Column(unique = true, length = 160)
+    private String dedupeKey;
+
     @Column(nullable = false)
     private boolean isRead = false; // 읽음 여부
 
-    @Column(nullable = false)
-    private LocalDateTime createdAt;
+    @Column(nullable = false, columnDefinition = "timestamp with time zone")
+    private Instant createdAt;
 
     @Builder
     public Notification(Long userId, String title, String body, NotificationType notificationType, String targetId) {
+        this(userId, title, body, notificationType, targetId, null);
+    }
+
+    public Notification(Long userId, String title, String body, NotificationType notificationType, String targetId, String dedupeKey) {
         this.userId = userId;
         this.title = title;
         this.body = body;
         this.notificationType = notificationType;
         this.targetId = targetId;
-        this.createdAt = LocalDateTime.now();
+        this.dedupeKey = dedupeKey;
+        this.createdAt = Instant.now();
     }
 
     // 알림 읽음 처리 메서드

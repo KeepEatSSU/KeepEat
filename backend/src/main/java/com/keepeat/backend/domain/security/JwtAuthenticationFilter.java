@@ -1,5 +1,7 @@
 package com.keepeat.backend.domain.security;
 
+import com.keepeat.backend.domain.user.entity.AppUser;
+import com.keepeat.backend.domain.user.repository.AppUserRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
@@ -21,6 +23,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String ADMIN_TOKEN_COOKIE = "ADMIN_TOKEN";
 
     private final JwtProvider jwtProvider;
+    private final AppUserRepository appUserRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
@@ -30,7 +33,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (token != null && jwtProvider.validateToken(token)) {
 
             Long id = jwtProvider.getId(token);
-            String role = jwtProvider.getRole(token);
+            AppUser user = appUserRepository.findById(id).orElse(null);
+            if (user == null) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
+            String role = user.getRole().name();
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(id, null, List.of(new SimpleGrantedAuthority(role)));

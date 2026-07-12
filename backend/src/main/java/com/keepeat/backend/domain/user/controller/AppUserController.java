@@ -87,9 +87,24 @@ public class AppUserController {
     @PostMapping("/password/find")
     public ResponseEntity<String> findPassword(@Valid @RequestBody PasswordFindRequest request) {
 
-        appUserService.sendTemporaryPassword(request.email());
+        appUserService.requestPasswordReset(request.email());
 
-        return ResponseEntity.ok("입력하신 이메일로 임시 비밀번호가 발송되었습니다.");
+        return ResponseEntity.ok("가입된 이메일이라면 비밀번호 재설정 인증번호가 발송되었습니다.");
+    }
+
+    @PostMapping("/password/find/verify")
+    public ResponseEntity<String> verifyPasswordReset(@Valid @RequestBody PasswordResetVerifyRequest request) {
+
+        appUserService.verifyPasswordResetAndSendTemporaryPassword(request.email(), request.code());
+
+        return ResponseEntity.ok("인증이 완료되어 임시 비밀번호가 이메일로 발송되었습니다.");
+    }
+
+    @Operation(summary = "OAuth 로그인 코드 교환", description = "OAuth 리다이렉트로 받은 일회용 코드를 JWT 토큰 세트로 교환합니다.")
+    @PostMapping("/oauth2/exchange")
+    public ResponseEntity<TokenResponse> exchangeOAuthCode(@Valid @RequestBody OAuthCodeExchangeRequest request) {
+        TokenResponse tokenResponse = appUserService.exchangeOAuthLoginCode(request.code());
+        return ResponseEntity.ok(tokenResponse);
     }
 
     @Operation(summary = "비밀번호 변경 (로그인 상태)", description = "로그인한 사용자가 현재 비밀번호를 인증한 후 새로운 비밀번호로 변경합니다.")

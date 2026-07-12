@@ -29,6 +29,9 @@ public class EmailAuth {
     @Column(nullable = false)
     private boolean isVerified = false; // 인증 성공 여부
 
+    @Column(nullable = false)
+    private int failedAttempts = 0;
+
     @Builder
     public EmailAuth(String email, String authCode, LocalDateTime expiredAt) {
         this.email = email;
@@ -41,10 +44,20 @@ public class EmailAuth {
         this.authCode = newAuthCode;
         this.expiredAt = newExpiredAt;
         this.isVerified = false;
+        this.failedAttempts = 0;
     }
 
     // 인증 성공 처리 메서드
     public void verify() {
         this.isVerified = true;
+        this.failedAttempts = 0;
+    }
+
+    public void recordFailure() {
+        this.failedAttempts++;
+    }
+
+    public boolean isExpired(LocalDateTime now) {
+        return now.isAfter(this.expiredAt);
     }
 }

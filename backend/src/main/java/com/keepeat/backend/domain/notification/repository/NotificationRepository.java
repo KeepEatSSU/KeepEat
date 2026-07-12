@@ -28,7 +28,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
            "WHERE n.userId = :userId AND n.notificationType = :type AND n.isRead = false")
     int markAllAsReadByUserIdAndType(@Param("userId") Long userId, @Param("type") NotificationType type);
 
-    @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND (cast(:cursor as long) IS NULL OR n.id < :cursor) ORDER BY n.id DESC")
+    boolean existsByDedupeKey(String dedupeKey);
+
+    @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND (:cursor IS NULL OR n.id < :cursor) ORDER BY n.id DESC")
     List<Notification> findNotificationsByCursor(
             @Param("userId") Long userId,
             @Param("cursor") Long cursor,

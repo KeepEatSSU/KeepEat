@@ -32,4 +32,8 @@ public class DeviceToken {
         this.token = token;
         this.createdAt = LocalDateTime.now();
     }
+
+    public void reassignTo(Long userId) {
+        this.userId = userId;
+    }
 }

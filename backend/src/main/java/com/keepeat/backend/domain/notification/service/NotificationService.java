@@ -1,5 +1,7 @@
 package com.keepeat.backend.domain.notification.service;
 
+import com.keepeat.backend.domain.common.exception.ErrorCode;
+import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.notification.dto.NotificationPageResponse;
 import com.keepeat.backend.domain.notification.dto.NotificationResponse;
 import com.keepeat.backend.domain.notification.dto.PushSendRequest;
@@ -12,17 +14,22 @@ import com.keepeat.backend.domain.user.entity.AppUser;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+
 import java.util.List;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class NotificationService {
+
+    private static final int MIN_PAGE_SIZE = 1;
+    private static final int MAX_PAGE_SIZE = 100;
 
     private final DeviceTokenRepository deviceTokenRepository;
     private final NotificationRepository notificationRepository;
@@ -31,63 +38,58 @@ public class NotificationService {
 
     @Transactional
     public void registerToken(Long userId, String token) {
-        deviceTokenRepository.findByToken(token).orElseGet(() -> {
+        requireActiveUser(userId);
+
+        deviceTokenRepository.findByToken(token).ifPresentOrElse(existingToken -> {
+            if (!existingToken.getUserId().equals(userId)) {
+                existingToken.reassignTo(userId);
+                log.info("기기 토큰 소유자를 유저 {}로 변경했습니다.", userId);
+            }
+        }, () -> {
             DeviceToken newToken = new DeviceToken(userId, token);
-            return deviceTokenRepository.save(newToken);
+            deviceTokenRepository.save(newToken);
+            log.info("유저 {}의 새로운 기기 토큰이 등록되었습니다.", userId);
         });
-        log.info("유저 {}의 새로운 기기 토큰이 등록되었습니다.", userId);
     }
 
     @Transactional
     public void sendNotification(Long userId, String title, String body, NotificationType type, String targetId) {
+        sendNotificationInternal(userId, title, body, type, targetId, null);
+    }
 
-        // 유저 정보 조회
-        AppUser user = appUserRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
-
-        // 유저 알림 설정과 무관하게 히스토리(종 모양 버튼용)는 무조건 DB에 저장
-        Notification notification = new Notification(userId, title, body, type, targetId);
-        notificationRepository.save(notification);
-
-        // 유저가 알림을 껐다면 여기서 메서드를 종료 (푸시 안 쏨)
-        if (!user.isNotificationEnabled()) {
-            log.info("유저 {}는 알림을 끈 상태입니다. 히스토리만 저장하고 푸시 알림은 생략합니다.", userId);
-            return;
+    @Transactional
+    public boolean sendNotificationOnce(Long userId, String title, String body, NotificationType type, String targetId, String dedupeKey) {
+        if (notificationRepository.existsByDedupeKey(dedupeKey)) {
+            log.info("중복 알림을 생략했습니다. dedupeKey={}", dedupeKey);
+            return false;
         }
 
-        // 알림이 켜져 있는 유저라면 기기 토큰들을 꺼내서 엑스포로 푸시 발송
-        List<DeviceToken> tokens = deviceTokenRepository.findAllByUserId(userId);
-        for (DeviceToken deviceToken : tokens) {
-            PushSendRequest request = new PushSendRequest(deviceToken.getToken(), title, body, type, targetId);
-            expoPushService.sendMessage(request);
-        }
+        sendNotificationInternal(userId, title, body, type, targetId, dedupeKey);
+        return true;
     }
 
     @Transactional(readOnly = true)
     public NotificationPageResponse getNotifications(Long userId, Long cursor, int size) {
+        requireActiveUser(userId);
+        validateCursor(cursor);
+        validatePageSize(size);
 
-        // 프론트에서 요구한 size보다 1개 더 많이 조회
         Pageable pageable = PageRequest.of(0, size + 1);
-
-        // Repository에서 커서 기반으로 데이터 조회 (아까 만든 쿼리 메서드 호출)
         List<Notification> notifications = notificationRepository.findNotificationsByCursor(userId, cursor, pageable);
 
-        // 다음 페이지 존재 여부 확인
         boolean hasNext = false;
         if (notifications.size() > size) {
             hasNext = true;
-            notifications.remove(size); // 프론트에게는 원래 요청한 개수(size)만큼만 잘라서 줘야 하므로 마지막 1개는 뺌
+            notifications.remove(size);
         }
 
-        // 엔티티를 DTO로 변환
         List<NotificationResponse> notificationResponses = notifications.stream()
                 .map(NotificationResponse::from)
                 .toList();
 
-        // 다음 커서 값 계산 (마지막 알림의 ID)
         Long nextCursor = null;
         if (hasNext && !notificationResponses.isEmpty()) {
-            nextCursor = notificationResponses.get(notificationResponses.size() - 1).id(); // DTO의 id 필드
+            nextCursor = notificationResponses.get(notificationResponses.size() - 1).id();
         }
 
         return new NotificationPageResponse(notificationResponses, hasNext, nextCursor);
@@ -95,11 +97,13 @@ public class NotificationService {
 
     @Transactional
     public void markAsRead(Long notificationId, Long userId) {
+        requireActiveUser(userId);
+
         Notification notification = notificationRepository.findById(notificationId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 알림입니다."));
+                .orElseThrow(() -> new KeepEatException(ErrorCode.NOTIFICATION_NOT_FOUND));
 
         if (!notification.getUserId().equals(userId)) {
-            throw new IllegalStateException("해당 알림에 대한 권한이 없습니다.");
+            throw new KeepEatException(ErrorCode.NOTIFICATION_ACCESS_DENIED);
         }
 
         notification.markAsRead();
@@ -107,58 +111,108 @@ public class NotificationService {
 
     @Transactional
     public void deleteToken(Long userId, String token) {
+        requireActiveUser(userId);
         deviceTokenRepository.deleteByUserIdAndToken(userId, token);
         log.info("유저 {}의 기기 토큰이 삭제되었습니다 (로그아웃 처리).", userId);
     }
 
     @Transactional(readOnly = true)
     public int getUnreadCount(Long userId) {
+        requireActiveUser(userId);
         return notificationRepository.countByUserIdAndIsReadFalse(userId);
     }
 
     @Transactional
     public void markAllAsRead(Long userId) {
-        // 벌크 연산 쿼리 실행 (업데이트된 알림 개수를 반환)
+        requireActiveUser(userId);
         int updatedCount = notificationRepository.markAllAsReadByUserId(userId);
         log.info("유저 {}의 알림 {}건이 모두 읽음 처리되었습니다.", userId, updatedCount);
     }
 
     @Transactional
     public void markAllAsReadByType(Long userId, NotificationType type) {
-        // 특정 타입 알림만 골라서 한 번에 읽음 처리
+        requireActiveUser(userId);
         int updatedCount = notificationRepository.markAllAsReadByUserIdAndType(userId, type);
         log.info("유저 {}의 {} 타입 알림 {}건이 모두 읽음 처리되었습니다.", userId, type, updatedCount);
     }
 
     @Transactional
     public void deleteNotification(Long notificationId, Long userId) {
-        // 본인 소유 알림만 삭제. 영향 받은 row가 0이면 존재하지 않거나 권한 없음.
+        requireActiveUser(userId);
         int deleted = notificationRepository.deleteByIdAndUserId(notificationId, userId);
         if (deleted == 0) {
-            throw new IllegalArgumentException("존재하지 않거나 권한이 없는 알림입니다.");
+            throw new KeepEatException(ErrorCode.NOTIFICATION_NOT_FOUND);
         }
         log.info("유저 {}가 알림 {} 1건을 삭제했습니다.", userId, notificationId);
     }
 
     @Transactional
     public void deleteNotifications(List<Long> ids, Long userId) {
-        // 본인 소유 알림만 삭제. 남의 ID가 섞여있어도 조용히 걸러진다.
+        requireActiveUser(userId);
         int deleted = notificationRepository.deleteAllByIdInAndUserId(ids, userId);
         log.info("유저 {}가 알림 {}건을 일괄 삭제했습니다. (요청 {}건 중)", userId, deleted, ids.size());
     }
 
-    /**
-     * 프론트엔드 알림 검증용. 자기 자신에게 즉시 알림 1건 발사
-     * title/message가 비어있으면 타입별 기본값 사용
-     * 기존 sendNotification을 재사용하므로 실제 알림 발사 흐름과 동일하게 동작
-     */
     @Transactional
     public void sendTestNotification(Long userId, NotificationType type, String title, String message) {
         String resolvedTitle = (title != null && !title.isBlank()) ? title : defaultTitle(type);
         String resolvedBody = (message != null && !message.isBlank()) ? message : defaultBody(type);
 
         sendNotification(userId, resolvedTitle, resolvedBody, type, null);
-        log.info("🧪 유저 {} 에게 테스트 알림 발사 (type={})", userId, type);
+        log.info("유저 {} 에게 테스트 알림 발사 (type={})", userId, type);
+    }
+
+    private void sendNotificationInternal(Long userId, String title, String body, NotificationType type, String targetId, String dedupeKey) {
+        AppUser user = requireActiveUser(userId);
+
+        Notification notification = new Notification(userId, title, body, type, targetId, dedupeKey);
+        notificationRepository.saveAndFlush(notification);
+
+        if (!user.isNotificationEnabled()) {
+            log.info("유저 {}는 알림을 끈 상태입니다. 히스토리만 저장하고 푸시 알림은 생략합니다.", userId);
+            return;
+        }
+
+        sendPushAfterCommit(userId, title, body, type, targetId);
+    }
+
+    private void sendPushAfterCommit(Long userId, String title, String body, NotificationType type, String targetId) {
+        if (!TransactionSynchronizationManager.isSynchronizationActive()) {
+            sendPush(userId, title, body, type, targetId);
+            return;
+        }
+
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                sendPush(userId, title, body, type, targetId);
+            }
+        });
+    }
+
+    private void sendPush(Long userId, String title, String body, NotificationType type, String targetId) {
+        List<DeviceToken> tokens = deviceTokenRepository.findAllByUserId(userId);
+        for (DeviceToken deviceToken : tokens) {
+            PushSendRequest request = new PushSendRequest(deviceToken.getToken(), title, body, type, targetId);
+            expoPushService.sendMessage(request);
+        }
+    }
+
+    private AppUser requireActiveUser(Long userId) {
+        return appUserRepository.findById(userId)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    private void validatePageSize(int size) {
+        if (size < MIN_PAGE_SIZE || size > MAX_PAGE_SIZE) {
+            throw new IllegalArgumentException("알림 조회 size는 1 이상 100 이하만 허용됩니다.");
+        }
+    }
+
+    private void validateCursor(Long cursor) {
+        if (cursor != null && cursor <= 0) {
+            throw new IllegalArgumentException("잘못된 커서 형식입니다.");
+        }
     }
 
     private String defaultTitle(NotificationType type) {

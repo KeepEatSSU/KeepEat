@@ -1,9 +1,10 @@
 package com.keepeat.backend.domain.security.oauth2;
 
 import com.keepeat.backend.domain.user.entity.AppUser;
+import com.keepeat.backend.domain.user.entity.OAuthLoginCode;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
+import com.keepeat.backend.domain.user.repository.OAuthLoginCodeRepository;
 import com.keepeat.backend.domain.user.service.AppUserService;
-import com.keepeat.backend.domain.security.JwtProvider;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -13,54 +14,66 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.oauth2.core.user.OAuth2User;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.io.IOException;
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
+import java.util.Base64;
 
 @Slf4j
 @Component
 public class OAuth2SuccessHandler extends SimpleUrlAuthenticationSuccessHandler {
 
-    private final JwtProvider jwtProvider;
+    private static final int OAUTH_LOGIN_CODE_EXPIRATION_MINUTES = 3;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private final AppUserRepository appUserRepository;
+    private final OAuthLoginCodeRepository oauthLoginCodeRepository;
     private final String oauth2RedirectUri;
 
     public OAuth2SuccessHandler(
-            JwtProvider jwtProvider,
             AppUserRepository appUserRepository,
+            OAuthLoginCodeRepository oauthLoginCodeRepository,
             @Value("${app.oauth2.redirect-uri}") String oauth2RedirectUri
     ) {
-        this.jwtProvider = jwtProvider;
         this.appUserRepository = appUserRepository;
+        this.oauthLoginCodeRepository = oauthLoginCodeRepository;
         this.oauth2RedirectUri = oauth2RedirectUri;
     }
 
     @Override
+    @Transactional
     public void onAuthenticationSuccess(HttpServletRequest request, HttpServletResponse response, Authentication authentication) throws IOException, ServletException {
-
         OAuth2User oAuth2User = (OAuth2User) authentication.getPrincipal();
         String email = oAuth2User.getAttribute("email");
 
         AppUser user = appUserRepository.findByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("유저를 찾을 수 없습니다."));
-        Long userId = user.getId();
 
-        // 토큰 발급
-        String accessToken = jwtProvider.createAccessToken(email, userId, user.getRole());
-        String rawRefreshToken = jwtProvider.createRefreshToken(email, userId, user.getRole());
+        LocalDateTime now = LocalDateTime.now();
+        oauthLoginCodeRepository.deleteAllByExpiresAtBefore(now);
 
-        // DB에는 해싱된 Refresh Token 저장 (일반 로그인 흐름과 동일)
-        user.updateRefreshToken(AppUserService.hashToken(rawRefreshToken));
-        appUserRepository.save(user);
+        String code = generateOpaqueCode();
+        oauthLoginCodeRepository.save(OAuthLoginCode.issue(
+                AppUserService.hashToken(code),
+                user.getId(),
+                now.plusMinutes(OAUTH_LOGIN_CODE_EXPIRATION_MINUTES)
+        ));
 
-        log.info("JWT 토큰 발급 및 DB 저장 완료 - Email: {}", email);
+        log.info("OAuth 일회용 로그인 코드 발급 완료 - Email: {}", email);
 
-        // 프론트엔드로 리다이렉트 (URL은 app.oauth2.redirect-uri 설정에서 주입)
         String targetUrl = UriComponentsBuilder.fromUriString(oauth2RedirectUri)
-                .queryParam("accessToken", accessToken)
-                .queryParam("refreshToken", rawRefreshToken)
+                .queryParam("code", code)
                 .build().toUriString();
 
         getRedirectStrategy().sendRedirect(request, response, targetUrl);
+    }
+
+    private String generateOpaqueCode() {
+        byte[] bytes = new byte[32];
+        SECURE_RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 }

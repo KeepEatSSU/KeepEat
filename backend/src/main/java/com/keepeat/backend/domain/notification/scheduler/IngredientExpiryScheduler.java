@@ -24,7 +24,7 @@ public class IngredientExpiryScheduler {
     private final NotificationService notificationService; // 우리가 만든 알림 매니저
 
     // 초 분 시 일 월 요일 -> 매일 아침 9시 0분 0초에 실행 (Cron 표현식)
-    @Scheduled(cron = "0 0 9 * * *")
+    @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Seoul")
     public void checkExpiringIngredients() {
         log.info("⏰ [소비기한 임박 알림 스케줄러] 작동 시작!");
 
@@ -53,13 +53,19 @@ public class IngredientExpiryScheduler {
                     ? String.valueOf(userItems.get(0).getId())
                     : null;
 
-            notificationService.sendNotification(
-                    userId,
-                    title,
-                    body,
-                    NotificationType.EXPIRY_SOON,
-                    targetId
-            );
+            String dedupeKey = "EXPIRY_SOON:%s:%d".formatted(today, userId);
+            try {
+                notificationService.sendNotificationOnce(
+                        userId,
+                        title,
+                        body,
+                        NotificationType.EXPIRY_SOON,
+                        targetId,
+                        dedupeKey
+                );
+            } catch (Exception e) {
+                log.warn("소비기한 임박 알림 발송 실패 - userId={}, dedupeKey={}", userId, dedupeKey, e);
+            }
         }
 
         log.info("⏰ [소비기한 임박 알림 스케줄러] 총 {}명의 유저에게 통합 알림 발송 완료 (임박 식재료 {}건)",
@@ -68,7 +74,13 @@ public class IngredientExpiryScheduler {
 
     // 식재료 이름: customName 우선, 없으면 기본 문구
     private String resolveItemName(UserIngredient item) {
-        return item.getCustomName() != null ? item.getCustomName() : "등록된 식재료";
+        if (item.getCustomName() != null && !item.getCustomName().isBlank()) {
+            return item.getCustomName();
+        }
+        if (item.getIngredient() != null) {
+            return item.getIngredient().getName();
+        }
+        return "등록된 식재료";
     }
 
     private String buildTitle(int itemCount) {

@@ -33,6 +33,10 @@ public enum ErrorCode {
     // 유저
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 유저를 찾을 수 없습니다."),
 
+    // 알림
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
+    NOTIFICATION_ACCESS_DENIED(HttpStatus.FORBIDDEN, "해당 알림에 접근할 권한이 없습니다."),
+
     // 어드민
     ADMIN_ACCESS_DENIED(HttpStatus.FORBIDDEN, "어드민 권한이 필요합니다."),
     INGREDIENT_NAME_DUPLICATED(HttpStatus.CONFLICT, "이미 존재하는 식재료입니다."),

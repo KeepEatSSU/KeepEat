@@ -1,0 +1,12 @@
+# Prometheus가 어떤 서버를 얼마나 자주 긁어올지 정의하는 파일
+
+global:
+  scrape_interval: 15s          # 15초마다 지표를 긁어옴
+
+scrape_configs:
+  - job_name: 'keepeat-backend'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      # host.docker.internal = 도커 컨테이너에서 본 '내 PC(호스트)' 주소
+      # 스프링은 IntelliJ로 8080에 직접 띄운 상태라고 가정
+      - targets: ['host.docker.internal:8080']

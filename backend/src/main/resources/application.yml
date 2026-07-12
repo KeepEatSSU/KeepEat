@@ -2,9 +2,72 @@ spring:
   application:
     name: backend
   profiles:
-    active: local
+    default: local
+
+  datasource:
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    show-sql: false
+    defer-datasource-initialization: true
+
+  sql:
+    init:
+      mode: never
+
+  ai:
+    google:
+      genai:
+        api-key: ${GEMINI_API_KEY}
+
+  security:
+    oauth2:
+      client:
+        registration:
+          google:
+            client-id: ${GOOGLE_CLIENT_ID}
+            client-secret: ${GOOGLE_CLIENT_SECRET}
+            scope:
+              - profile
+              - email
+            redirect-uri: "{baseUrl}/login/oauth2/code/{registrationId}"
+
+  mail:
+    host: smtp.gmail.com
+    port: 587
+    username: ${MAIL_USERNAME}
+    password: ${MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
 
 openai:
   api-key: ${OPENAI_API_KEY}
   model: gpt-4o
   max-tokens: 1024
+
+jwt:
+  secret: ${JWT_SECRET_KEY}
+  access-expiration: 3600000
+  refresh-expiration: 1209600000
+
+app:
+  oauth2:
+    redirect-uri: ${OAUTH2_REDIRECT_URI}
+
+firebase:
+  key-path: ${FIREBASE_KEY_PATH:}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true

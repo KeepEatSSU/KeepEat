@@ -1,0 +1,149 @@
+name: Deploy Demo to Oracle
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-demo-oracle
+  cancel-in-progress: false
+
+env:
+  REMOTE_DIR: /home/opc/app
+
+jobs:
+  deploy:
+    name: Build jar, ship to Oracle, restart demo
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: keepeat_test
+          POSTGRES_USER: keepeat
+          POSTGRES_PASSWORD: keepeat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U keepeat -d keepeat_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Setup Gradle (with cache)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Run tests (deploy gate)
+        run: ./gradlew test --no-daemon
+
+      - name: Build bootJar
+        run: ./gradlew clean bootJar --no-daemon -x test
+
+      - name: Rename jar to app.jar
+        run: |
+          set -e
+          cd build/libs
+          jar_file=$(find . -maxdepth 1 -name '*.jar' ! -name '*-plain.jar' -print -quit)
+          test -n "$jar_file"
+          mv "$jar_file" app.jar
+
+      - name: Stage deploy bundle
+        run: |
+          set -e
+          mkdir -p ../deploy-bundle
+          cp build/libs/app.jar ../deploy-bundle/app.jar
+          cp Dockerfile ../deploy-bundle/Dockerfile
+          cp docker-compose.yml ../deploy-bundle/docker-compose.yml
+          cp entrypoint.sh ../deploy-bundle/entrypoint.sh
+          chmod +x ../deploy-bundle/entrypoint.sh
+
+      - name: Copy bundle to Oracle via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEMO_HOST }}
+          username: ${{ secrets.DEMO_SSH_USER }}
+          key: ${{ secrets.DEMO_SSH_KEY }}
+          source: "deploy-bundle/*"
+          target: ${{ env.REMOTE_DIR }}
+          strip_components: 1
+
+      - name: Write demo .env and restart container
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          DEMO_DB_HOST: ${{ secrets.DEMO_DB_HOST }}
+          DEMO_DB_PORT: ${{ secrets.DEMO_DB_PORT }}
+          DEMO_DB_NAME: ${{ secrets.DEMO_DB_NAME }}
+          DEMO_DB_USER: ${{ secrets.DEMO_DB_USER }}
+          DEMO_DB_PASSWORD: ${{ secrets.DEMO_DB_PASSWORD }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          JWT_SECRET_KEY: ${{ secrets.DEMO_JWT_SECRET_KEY }}
+          MAIL_USERNAME: ${{ secrets.MAIL_USERNAME }}
+          MAIL_PASSWORD: ${{ secrets.MAIL_PASSWORD }}
+          FIREBASE_KEY_BASE64: ${{ secrets.FIREBASE_KEY_BASE64 }}
+          OAUTH2_REDIRECT_URI: ${{ secrets.DEMO_OAUTH2_REDIRECT_URI }}
+        with:
+          host: ${{ secrets.DEMO_HOST }}
+          username: ${{ secrets.DEMO_SSH_USER }}
+          key: ${{ secrets.DEMO_SSH_KEY }}
+          envs: DEMO_DB_HOST,DEMO_DB_PORT,DEMO_DB_NAME,DEMO_DB_USER,DEMO_DB_PASSWORD,OPENAI_API_KEY,GEMINI_API_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,JWT_SECRET_KEY,MAIL_USERNAME,MAIL_PASSWORD,FIREBASE_KEY_BASE64,OAUTH2_REDIRECT_URI
+          script: |
+            set -e
+            cd /home/opc/app
+
+            umask 077
+            cat > .env <<ENVEOF
+            SPRING_PROFILES_ACTIVE=demo
+            DEMO_DB_HOST=${DEMO_DB_HOST}
+            DEMO_DB_PORT=${DEMO_DB_PORT}
+            DEMO_DB_NAME=${DEMO_DB_NAME}
+            DEMO_DB_USER=${DEMO_DB_USER}
+            DEMO_DB_PASSWORD=${DEMO_DB_PASSWORD}
+            OPENAI_API_KEY=${OPENAI_API_KEY}
+            GEMINI_API_KEY=${GEMINI_API_KEY}
+            GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+            GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+            JWT_SECRET_KEY=${JWT_SECRET_KEY}
+            MAIL_USERNAME=${MAIL_USERNAME}
+            MAIL_PASSWORD=${MAIL_PASSWORD}
+            FIREBASE_KEY_BASE64=${FIREBASE_KEY_BASE64}
+            OAUTH2_REDIRECT_URI=${OAUTH2_REDIRECT_URI}
+            JAVA_OPTS=-Xms128m -Xmx384m -XX:+UseSerialGC
+            ENVEOF
+            chmod 600 .env
+
+            chmod +x entrypoint.sh
+            docker compose up -d --build app
+            docker image prune -f
+
+            echo "Waiting for /actuator/health to report UP..."
+            for i in $(seq 1 36); do
+              if curl -fsS http://localhost:8080/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
+                echo "Demo health check passed (attempt $i)"
+                exit 0
+              fi
+              sleep 5
+            done
+
+            echo "Demo health check failed after 180s"
+            docker compose logs app --tail=200
+            exit 1

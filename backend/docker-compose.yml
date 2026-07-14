@@ -20,9 +20,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-prod}
     ports:
-      - "${APP_PORT_MAPPING:-8080:8080}"
-    volumes:
-      - "${TLS_CERTS_DIR:-./letsencrypt}:/etc/letsencrypt:ro,z"
+      - "8080:8080"
     restart: unless-stopped
 
 volumes:

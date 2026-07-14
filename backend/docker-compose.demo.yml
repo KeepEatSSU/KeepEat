@@ -1,0 +1,6 @@
+services:
+  app:
+    ports: !override
+      - "443:8443"
+    volumes:
+      - "/home/opc/letsencrypt:/etc/letsencrypt:ro,z"

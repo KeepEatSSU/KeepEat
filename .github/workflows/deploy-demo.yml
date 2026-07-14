@@ -15,6 +15,7 @@ concurrency:
 
 env:
   REMOTE_DIR: /home/opc/app
+  DEMO_DOMAIN: www.141.147.155.197.nip.io
 
 jobs:
   deploy:
@@ -39,7 +40,6 @@ jobs:
     defaults:
       run:
         working-directory: backend
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -111,14 +111,39 @@ jobs:
           host: ${{ secrets.DEMO_HOST }}
           username: ${{ secrets.DEMO_SSH_USER }}
           key: ${{ secrets.DEMO_SSH_KEY }}
-          envs: DEMO_DB_HOST,DEMO_DB_PORT,DEMO_DB_NAME,DEMO_DB_USER,DEMO_DB_PASSWORD,OPENAI_API_KEY,GEMINI_API_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,JWT_SECRET_KEY,MAIL_USERNAME,MAIL_PASSWORD,FIREBASE_KEY_BASE64,OAUTH2_REDIRECT_URI
+          envs: DEMO_DB_HOST,DEMO_DB_PORT,DEMO_DB_NAME,DEMO_DB_USER,DEMO_DB_PASSWORD,OPENAI_API_KEY,GEMINI_API_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,JWT_SECRET_KEY,MAIL_USERNAME,MAIL_PASSWORD,FIREBASE_KEY_BASE64,OAUTH2_REDIRECT_URI,DEMO_DOMAIN
           script: |
             set -e
             cd /home/opc/app
 
+            sudo firewall-cmd --permanent --add-service=http
+            sudo firewall-cmd --permanent --add-service=https
+            sudo firewall-cmd --reload
+
+            sudo mkdir -p /home/opc/letsencrypt
+
+            if ! sudo test -f "/home/opc/letsencrypt/live/${DEMO_DOMAIN}/fullchain.pem"; then
+              echo "Issuing the initial TLS certificate for ${DEMO_DOMAIN}..."
+              docker stop keepeat-app >/dev/null 2>&1 || true
+              if ! docker run --rm --network host \
+                --memory=192m \
+                --memory-swap=384m \
+                -v /home/opc/letsencrypt:/etc/letsencrypt:z \
+                certbot/certbot:latest certonly \
+                --standalone \
+                --preferred-challenges http \
+                --non-interactive \
+                --agree-tos \
+                --email "${MAIL_USERNAME}" \
+                --domain "${DEMO_DOMAIN}"; then
+                docker start keepeat-app >/dev/null 2>&1 || true
+                exit 1
+              fi
+            fi
+
             umask 077
             cat > .env <<ENVEOF
-            SPRING_PROFILES_ACTIVE=demo
+            SPRING_PROFILES_ACTIVE=demo,tls
             DEMO_DB_HOST=${DEMO_DB_HOST}
             DEMO_DB_PORT=${DEMO_DB_PORT}
             DEMO_DB_NAME=${DEMO_DB_NAME}
@@ -134,6 +159,12 @@ jobs:
             FIREBASE_KEY_BASE64=${FIREBASE_KEY_BASE64}
             OAUTH2_REDIRECT_URI=${OAUTH2_REDIRECT_URI}
             JAVA_OPTS=-Xms128m -Xmx384m -XX:+UseSerialGC
+            APP_PORT_MAPPING=443:8443
+            SERVER_PORT=8443
+            TLS_CERTS_DIR=/home/opc/letsencrypt
+            TLS_CERTIFICATE_PATH=file:/etc/letsencrypt/live/${DEMO_DOMAIN}/fullchain.pem
+            TLS_PRIVATE_KEY_PATH=file:/etc/letsencrypt/live/${DEMO_DOMAIN}/privkey.pem
+            HEALTHCHECK_URL=https://localhost:8443/actuator/health
             ENVEOF
             chmod 600 .env
 
@@ -141,10 +172,39 @@ jobs:
             docker compose up -d --build app
             docker image prune -f
 
+            sudo tee /etc/systemd/system/keepeat-certbot-renew.service >/dev/null <<UNITEOF
+            [Unit]
+            Description=Renew KeepEat demo TLS certificate
+            Requires=docker.service
+            After=docker.service network-online.target
+
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/bin/docker run --rm --network host --memory=192m --memory-swap=384m -v /home/opc/letsencrypt:/etc/letsencrypt:z certbot/certbot:latest renew --standalone --quiet
+            UNITEOF
+
+            sudo tee /etc/systemd/system/keepeat-certbot-renew.timer >/dev/null <<UNITEOF
+            [Unit]
+            Description=Check KeepEat demo TLS certificate renewal twice daily
+
+            [Timer]
+            OnCalendar=*-*-* 03,15:17:00
+            RandomizedDelaySec=3600
+            Persistent=true
+
+            [Install]
+            WantedBy=timers.target
+            UNITEOF
+
+            sudo systemctl daemon-reload
+            sudo systemctl enable --now keepeat-certbot-renew.timer
+
             echo "Waiting for /actuator/health to report UP..."
             for i in $(seq 1 36); do
-              if curl -fsS http://localhost:8080/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
+              if curl -fkSs https://localhost/actuator/health 2>/dev/null | grep -q '"status":"UP"'; then
                 echo "Demo health check passed (attempt $i)"
+                sudo firewall-cmd --permanent --remove-port=8080/tcp || true
+                sudo firewall-cmd --reload
                 exit 0
               fi
               sleep 5

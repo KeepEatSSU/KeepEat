@@ -1,0 +1,14 @@
+spring:
+  ssl:
+    bundle:
+      pem:
+        webserver:
+          reload-on-update: true
+          keystore:
+            certificate: ${TLS_CERTIFICATE_PATH}
+            private-key: ${TLS_PRIVATE_KEY_PATH}
+
+server:
+  port: ${SERVER_PORT:8443}
+  ssl:
+    bundle: webserver

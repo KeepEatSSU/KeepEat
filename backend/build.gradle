@@ -64,6 +64,9 @@ dependencies {
 
     // FCM 알림기능 용
     implementation 'com.google.firebase:firebase-admin:9.2.0'
+
+	//프로메테우스
+	implementation 'io.micrometer:micrometer-registry-prometheus'
 }
 
 tasks.named('test') {

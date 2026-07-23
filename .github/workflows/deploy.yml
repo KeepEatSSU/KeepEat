@@ -20,6 +20,22 @@ jobs:
   deploy:
     name: Build jar, ship to EC2, restart container
     runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_DB: keepeat_test
+          POSTGRES_USER: keepeat
+          POSTGRES_PASSWORD: keepeat
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U keepeat -d keepeat_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     defaults:
       run:
         working-directory: backend
@@ -135,3 +151,10 @@ jobs:
             echo "Health check failed after 120s"
             docker compose logs app --tail=200
             exit 1
+
+      - name: Notify Slack deploy result
+        if: always()
+        run: |
+          curl -X POST -H 'Content-type: application/json' \
+            --data "{\"text\":\"Deploy ${{ job.status }}: ${{ github.repository }} / ${{ github.ref_name }} / ${{ github.sha }}\"}" \
+            "${{ secrets.SLACK_DEPLOY_WEBHOOK_URL }}"

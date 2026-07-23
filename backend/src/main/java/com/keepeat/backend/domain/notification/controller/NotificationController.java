@@ -1,8 +1,10 @@
 package com.keepeat.backend.domain.notification.controller;
 
 import com.keepeat.backend.domain.notification.dto.DeviceTokenRequest;
+import com.keepeat.backend.domain.notification.dto.NotificationBulkDeleteRequest;
 import com.keepeat.backend.domain.notification.dto.NotificationPageResponse;
 import com.keepeat.backend.domain.notification.dto.NotificationResponse;
+import com.keepeat.backend.domain.notification.dto.NotificationTestRequest;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
 import com.keepeat.backend.domain.notification.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -94,6 +96,46 @@ public class NotificationController {
             @PathVariable("type") NotificationType type) {
 
         notificationService.markAllAsReadByType(userId, type);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "알림 단일 삭제",
+            description = "특정 알림 한 건을 삭제합니다. 본인 소유가 아니거나 존재하지 않으면 400.")
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteNotification(
+            @AuthenticationPrincipal Long userId,
+            @PathVariable("id") Long notificationId) {
+
+        notificationService.deleteNotification(notificationId, userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "알림 일괄 삭제",
+            description = "선택한 여러 알림을 한 번에 삭제합니다. 본인 소유 알림만 삭제되며, " +
+                    "본인 소유가 아닌 ID가 섞여 있어도 에러 없이 조용히 무시됩니다.")
+    @DeleteMapping
+    public ResponseEntity<Void> deleteNotifications(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody NotificationBulkDeleteRequest request) {
+
+        notificationService.deleteNotifications(request.ids(), userId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @Operation(summary = "[TEST]",
+            description = " 자기 자신에게 즉시 알림을 발사. " +
+                    "type은 필수(NOTICE / EXPIRY_SOON / RECIPE_READY), title/message는 선택 (없으면 타입별 기본값). ")
+    @PostMapping("/test")
+    public ResponseEntity<Void> sendTestNotification(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody NotificationTestRequest request) {
+
+        notificationService.sendTestNotification(
+                userId,
+                request.type(),
+                request.title(),
+                request.message()
+        );
         return ResponseEntity.noContent().build();
     }
 }

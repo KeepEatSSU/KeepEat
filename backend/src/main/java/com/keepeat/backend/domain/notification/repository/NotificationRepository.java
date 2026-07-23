@@ -34,4 +34,14 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
             @Param("cursor") Long cursor,
             Pageable pageable
     );
+
+    // 단일 삭제: 본인 소유일 때만 삭제됨 (반환값으로 실제 삭제 여부 판단)
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.id = :id AND n.userId = :userId")
+    int deleteByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
+
+    // 일괄 삭제: ids 중 본인 소유인 것만 삭제 (남의 알림 ID 섞여 있어도 조용히 무시)
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.id IN :ids AND n.userId = :userId")
+    int deleteAllByIdInAndUserId(@Param("ids") List<Long> ids, @Param("userId") Long userId);
 }

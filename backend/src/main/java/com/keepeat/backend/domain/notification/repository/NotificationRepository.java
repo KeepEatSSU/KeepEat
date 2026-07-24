@@ -10,11 +10,10 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.util.List;
+import java.time.Instant;
+import java.util.Optional;
 
 public interface NotificationRepository extends JpaRepository<Notification, Long> {
-    // 유저의 알림 히스토리를 최신순으로 가져오기
-    List<Notification> findAllByUserIdOrderByCreatedAtDesc(Long userId);
-
     // 유저 ID로 안 읽은 알림(isRead = false) 개수만 빠르게 세어오는 쿼리
     int countByUserIdAndIsReadFalse(Long userId);
 
@@ -28,7 +27,27 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
            "WHERE n.userId = :userId AND n.notificationType = :type AND n.isRead = false")
     int markAllAsReadByUserIdAndType(@Param("userId") Long userId, @Param("type") NotificationType type);
 
-    @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND (cast(:cursor as long) IS NULL OR n.id < :cursor) ORDER BY n.id DESC")
+    @Modifying
+    @Query(value = """
+            INSERT INTO notification
+                (user_id, title, body, notification_type, target_id, dedupe_key, is_read, created_at)
+            VALUES
+                (:userId, :title, :body, :type, :targetId, :dedupeKey, false, :createdAt)
+            ON CONFLICT (dedupe_key) DO NOTHING
+            """, nativeQuery = true)
+    int insertIfAbsent(
+            @Param("userId") Long userId,
+            @Param("title") String title,
+            @Param("body") String body,
+            @Param("type") String type,
+            @Param("targetId") String targetId,
+            @Param("dedupeKey") String dedupeKey,
+            @Param("createdAt") Instant createdAt
+    );
+
+    Optional<Notification> findByIdAndUserId(Long id, Long userId);
+
+    @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND (:cursor IS NULL OR n.id < :cursor) ORDER BY n.id DESC")
     List<Notification> findNotificationsByCursor(
             @Param("userId") Long userId,
             @Param("cursor") Long cursor,
@@ -44,4 +63,10 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
     @Modifying
     @Query("DELETE FROM Notification n WHERE n.id IN :ids AND n.userId = :userId")
     int deleteAllByIdInAndUserId(@Param("ids") List<Long> ids, @Param("userId") Long userId);
+
+    void deleteAllByUserId(Long userId);
+
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.createdAt < :cutoff")
+    int deleteExpiredBefore(@Param("cutoff") Instant cutoff);
 }

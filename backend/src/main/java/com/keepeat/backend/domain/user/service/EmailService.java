@@ -2,96 +2,194 @@ package com.keepeat.backend.domain.user.service;
 
 import com.keepeat.backend.domain.user.entity.EmailAuth;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
-import lombok.RequiredArgsConstructor;
+import com.keepeat.backend.domain.user.repository.EmailAuthRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import java.time.LocalDateTime;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
+import java.security.SecureRandom;
+import java.time.LocalDateTime;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class EmailService {
 
+    private static final int AUTH_CODE_EXPIRATION_MINUTES = 5;
+    private static final int MAX_AUTH_CODE_ATTEMPTS = 5;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private final JavaMailSender mailSender;
-    private final com.keepeat.backend.domain.user.repository.EmailAuthRepository emailAuthRepository;
+    private final EmailAuthRepository emailAuthRepository;
     private final AppUserRepository appUserRepository;
-    private static final int AUTH_CODE_EXPIRATION_MINUTES = 5; // 만료 시간 5분
+    private final TransactionTemplate transactionTemplate;
+    private final Object[] issueLocks = new Object[256];
 
-    public void sendTemporaryPassword(String toEmail, String temporaryPassword) {
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(toEmail);
-        message.setSubject("[KeepEat] 임시 비밀번호 발급 안내");
-        message.setText(String.format("""
-            안녕하세요. KeepEat 서비스 팀입니다.
-            
-            요청하신 임시 비밀번호를 아래와 같이 발급해 드립니다.
-            로그인 후 마이페이지에서 반드시 비밀번호를 변경해 주세요.
-            
-            임시 비밀번호 : %s
-            
-            감사합니다.
-            """, temporaryPassword));
-
-        try {
-            mailSender.send(message);
-            log.info("📧 [{}] 유저에게 임시 비밀번호 이메일 발송 완료", toEmail);
-        } catch (Exception e) {
-            log.error("❌ 이메일 발송 중 오류 발생: {}", e.getMessage(), e);
-            throw new RuntimeException("이메일 발송에 실패했습니다."); // Custom Exception으로 대체 가능
-        }
+    public EmailService(
+            JavaMailSender mailSender,
+            EmailAuthRepository emailAuthRepository,
+            AppUserRepository appUserRepository,
+            PlatformTransactionManager transactionManager
+    ) {
+        this.mailSender = mailSender;
+        this.emailAuthRepository = emailAuthRepository;
+        this.appUserRepository = appUserRepository;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        java.util.Arrays.setAll(issueLocks, ignored -> new Object());
     }
-    // 인증번호 생성 및 발송
-    @Transactional
-    public void sendVerificationCode(String email) {
-        // 이미 가입된 활성 유저면 인증번호 발송 자체를 거절한다.
-        // existsByEmail은 AppUser의 @SQLRestriction("deleted_at IS NULL") 적용을 받아
-        // 탈퇴(soft delete)된 유저의 원본 이메일은 변조되어 저장되므로 자연스럽게 통과된다.
-        if (appUserRepository.existsByEmail(email)) {
+
+    public void sendVerificationCode(String rawEmail) {
+        String email = EmailNormalizer.normalize(rawEmail);
+        if (appUserRepository.existsByEmailIgnoreCase(email)) {
             throw new IllegalArgumentException("이미 가입된 이메일입니다.");
         }
 
-        // 6자리 난수 인증번호 생성
-        String authCode = String.format("%06d", new java.util.Random().nextInt(1000000));
-        LocalDateTime expiredAt = LocalDateTime.now().plusMinutes(AUTH_CODE_EXPIRATION_MINUTES);
-
-        // 기존에 발급받은 내역이 있다면 덮어쓰고, 없으면 새로 생성
-        EmailAuth emailAuth = emailAuthRepository.findByEmail(email)
-                .orElseGet(() -> EmailAuth.builder().email(email).build());
-
-        emailAuth.updateAuthCode(authCode, expiredAt);
-        emailAuthRepository.save(emailAuth);
-
-        // 이메일 발송
-        SimpleMailMessage message = new SimpleMailMessage();
-        message.setTo(email);
-        message.setSubject("[KeepEat] 회원가입 이메일 인증번호");
-        message.setText("안녕하세요! KeepEat 회원가입 인증번호는 [" + authCode + "] 입니다.\n5분 안에 입력해 주세요.");
-
-        mailSender.send(message);
-        log.info("📧 [{}] 회원가입 인증번호 이메일 발송 완료", email);
+        String authCode = issueAuthCodeSafely(email);
+        send(
+                email,
+                "[KeepEat] 회원가입 이메일 인증번호",
+                "안녕하세요! KeepEat 회원가입 인증번호는 [" + authCode + "] 입니다.\n5분 안에 입력해 주세요."
+        );
+        log.info("회원가입 인증번호 이메일 발송 완료");
     }
 
-    // 인증번호 검증 로직
-    @Transactional
-    public void verifyAuthCode(String email, String inputCode) {
-        EmailAuth emailAuth = emailAuthRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("인증 요청 내역이 없습니다. 인증번호를 다시 발급받아 주세요."));
+    public void sendPasswordResetCode(String rawEmail) {
+        String email = EmailNormalizer.normalize(rawEmail);
+        String authCode = issueAuthCodeSafely(email);
+        send(
+                email,
+                "[KeepEat] 비밀번호 재설정 인증번호",
+                "안녕하세요. KeepEat 비밀번호 재설정 인증번호는 [" + authCode + "] 입니다.\n5분 안에 입력해 주세요."
+        );
+        log.info("비밀번호 재설정 인증번호 이메일 발송 완료");
+    }
 
-        // 시간 만료 체크 로직
-        if (LocalDateTime.now().isAfter(emailAuth.getExpiredAt())) {
-            throw new IllegalArgumentException("인증 시간이 만료되었습니다. 다시 시도해 주세요.");
+    public void sendPasswordResetUnavailable(String rawEmail) {
+        String email = EmailNormalizer.normalize(rawEmail);
+        send(
+                email,
+                "[KeepEat] 비밀번호 재설정 안내",
+                """
+                안녕하세요. KeepEat 서비스 팀입니다.
+
+                해당 이메일은 소셜 로그인으로 가입된 계정입니다.
+                비밀번호 재설정 대신 기존에 사용하신 소셜 로그인으로 접속해 주세요.
+
+                감사합니다.
+                """
+        );
+        log.info("소셜 로그인 계정 비밀번호 재설정 안내 이메일 발송 완료");
+    }
+
+    public void verifyAuthCode(String rawEmail, String inputCode) {
+        String email = EmailNormalizer.normalize(rawEmail);
+        String errorMessage = transactionTemplate.execute(status -> {
+            EmailAuth emailAuth = emailAuthRepository.findWithLockByEmail(email).orElse(null);
+            if (emailAuth == null) {
+                return "인증 요청 내역이 없습니다. 인증번호를 다시 발급받아 주세요.";
+            }
+            String validationError = validateAuthCode(emailAuth, inputCode, "인증번호가 일치하지 않습니다.");
+            if (validationError != null) {
+                return validationError;
+            }
+            emailAuth.verify();
+            return null;
+        });
+        throwIfVerificationFailed(errorMessage);
+    }
+
+    public void consumePasswordResetCode(String rawEmail, String inputCode) {
+        String email = EmailNormalizer.normalize(rawEmail);
+        String errorMessage = transactionTemplate.execute(status -> {
+            EmailAuth emailAuth = emailAuthRepository.findWithLockByEmail(email).orElse(null);
+            if (emailAuth == null) {
+                return "인증번호가 올바르지 않거나 만료되었습니다.";
+            }
+            String validationError = validateAuthCode(
+                    emailAuth,
+                    inputCode,
+                    "인증번호가 올바르지 않거나 만료되었습니다."
+            );
+            if (validationError != null) {
+                return validationError;
+            }
+            emailAuthRepository.delete(emailAuth);
+            return null;
+        });
+        throwIfVerificationFailed(errorMessage);
+    }
+
+    private String issueAuthCode(String email) {
+        String authCode = String.format("%06d", SECURE_RANDOM.nextInt(1_000_000));
+        LocalDateTime expiredAt = LocalDateTime.now().plusMinutes(AUTH_CODE_EXPIRATION_MINUTES);
+        EmailAuth emailAuth = emailAuthRepository.findWithLockByEmail(email)
+                .orElseGet(() -> EmailAuth.builder().email(email).build());
+        emailAuth.updateAuthCode(AppUserService.hashToken(authCode), expiredAt);
+        emailAuthRepository.saveAndFlush(emailAuth);
+        return authCode;
+    }
+
+    private String issueAuthCodeSafely(String email) {
+        Object lock = issueLocks[(email.hashCode() & Integer.MAX_VALUE) % issueLocks.length];
+        synchronized (lock) {
+            return transactionTemplate.execute(status -> issueAuthCode(email));
+        }
+    }
+
+    private String validateAuthCode(EmailAuth emailAuth, String inputCode, String mismatchMessage) {
+        LocalDateTime now = LocalDateTime.now();
+        if (emailAuth.isExpired(now)) {
+            emailAuthRepository.delete(emailAuth);
+            return "인증 시간이 만료되었습니다. 다시 시도해 주세요.";
+        }
+        if (emailAuth.getFailedAttempts() >= MAX_AUTH_CODE_ATTEMPTS) {
+            emailAuthRepository.delete(emailAuth);
+            return "인증 시도 횟수를 초과했습니다. 인증번호를 다시 발급받아 주세요.";
+        }
+        if (!MessageDigestSupport.constantTimeEquals(emailAuth.getAuthCode(), AppUserService.hashToken(inputCode))) {
+            emailAuth.recordFailure();
+            if (emailAuth.getFailedAttempts() >= MAX_AUTH_CODE_ATTEMPTS) {
+                emailAuthRepository.delete(emailAuth);
+                return "인증 시도 횟수를 초과했습니다. 인증번호를 다시 발급받아 주세요.";
+            }
+            return mismatchMessage;
+        }
+        return null;
+    }
+
+    private void throwIfVerificationFailed(String errorMessage) {
+        if (errorMessage != null) {
+            throw new EmailVerificationException(errorMessage);
+        }
+    }
+
+    private void send(String to, String subject, String body) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(to);
+        message.setSubject(subject);
+        message.setText(body);
+        try {
+            mailSender.send(message);
+        } catch (Exception e) {
+            log.error("이메일 발송 실패: {}", e.getClass().getSimpleName());
+            throw new IllegalStateException("이메일 발송에 실패했습니다.", e);
+        }
+    }
+
+    private static final class MessageDigestSupport {
+        private MessageDigestSupport() {
         }
 
-        // 인증번호 일치 여부 체크
-        if (!emailAuth.getAuthCode().equals(inputCode)) {
-            throw new IllegalArgumentException("인증번호가 일치하지 않습니다.");
+        private static boolean constantTimeEquals(String left, String right) {
+            if (left == null || right == null) {
+                return false;
+            }
+            return java.security.MessageDigest.isEqual(
+                    left.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                    right.getBytes(java.nio.charset.StandardCharsets.UTF_8)
+            );
         }
-
-        // 모두 통과하면 인증 완료(isVerified = true) 처리
-        emailAuth.verify();
     }
 }

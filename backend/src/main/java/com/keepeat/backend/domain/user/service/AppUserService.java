@@ -1,150 +1,324 @@
 package com.keepeat.backend.domain.user.service;
 
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.security.SecureRandom;
-import java.util.Base64;
-import java.nio.charset.StandardCharsets;
-
+import com.keepeat.backend.domain.common.exception.ErrorCode;
+import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
+import com.keepeat.backend.domain.notification.repository.NotificationRepository;
+import com.keepeat.backend.domain.recipe.repository.RecipeReactionRepository;
 import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
 import com.keepeat.backend.domain.security.JwtProvider;
-import com.keepeat.backend.domain.user.dto.*;
+import com.keepeat.backend.domain.user.dto.LoginRequest;
+import com.keepeat.backend.domain.user.dto.LogoutRequest;
+import com.keepeat.backend.domain.user.dto.PasswordChangeRequest;
+import com.keepeat.backend.domain.user.dto.PasswordResetRequest;
+import com.keepeat.backend.domain.user.dto.PasswordResetTokenResponse;
+import com.keepeat.backend.domain.user.dto.SignUpRequest;
+import com.keepeat.backend.domain.user.dto.TokenRefreshRequest;
+import com.keepeat.backend.domain.user.dto.TokenResponse;
+import com.keepeat.backend.domain.user.dto.UserDeleteRequest;
+import com.keepeat.backend.domain.user.dto.UserResponse;
 import com.keepeat.backend.domain.user.entity.AppUser;
-import com.keepeat.backend.domain.user.entity.Role;
 import com.keepeat.backend.domain.user.entity.EmailAuth;
+import com.keepeat.backend.domain.user.entity.OAuthLoginCode;
+import com.keepeat.backend.domain.user.entity.PasswordResetToken;
+import com.keepeat.backend.domain.user.entity.Role;
+import com.keepeat.backend.domain.user.entity.UserSession;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
 import com.keepeat.backend.domain.user.repository.EmailAuthRepository;
+import com.keepeat.backend.domain.user.repository.OAuthLoginCodeRepository;
+import com.keepeat.backend.domain.user.repository.PasswordResetTokenRepository;
+import com.keepeat.backend.domain.user.repository.UserSessionRepository;
+import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.util.Base64;
+import java.util.UUID;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class AppUserService {
 
+    private static final String LOCAL_PROVIDER = "LOCAL";
+    private static final int OAUTH_LOGIN_CODE_EXPIRATION_MINUTES = 3;
+    private static final int PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES = 10;
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private final AppUserRepository appUserRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtProvider jwtProvider;
-    private final UserRecipeRepository userRecipeRepository;
     private final EmailAuthRepository emailAuthRepository;
     private final EmailService emailService;
     private final DeviceTokenRepository deviceTokenRepository;
-
-    private static final String LOCAL_PROVIDER = "LOCAL";
+    private final NotificationRepository notificationRepository;
+    private final OAuthLoginCodeRepository oauthLoginCodeRepository;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final UserSessionRepository userSessionRepository;
+    private final UserIngredientRepository userIngredientRepository;
+    private final UserRecipeRepository userRecipeRepository;
+    private final RecipeReactionRepository recipeReactionRepository;
 
     @Transactional
     public Long signUp(SignUpRequest request) {
-
-        EmailAuth emailAuth = emailAuthRepository.findByEmail(request.email())
+        String email = EmailNormalizer.normalize(request.email());
+        EmailAuth emailAuth = emailAuthRepository.findWithLockByEmail(email)
                 .orElseThrow(() -> new IllegalArgumentException("이메일 인증을 진행해 주세요."));
 
+        if (emailAuth.isExpired(LocalDateTime.now())) {
+            emailAuthRepository.delete(emailAuth);
+            throw new IllegalArgumentException("이메일 인증 시간이 만료되었습니다. 다시 인증해 주세요.");
+        }
         if (!emailAuth.isVerified()) {
             throw new IllegalArgumentException("이메일 인증이 완료되지 않았습니다.");
         }
-
-        // 이메일 중복 검사
-        if (appUserRepository.existsByEmail(request.email())) {
+        if (appUserRepository.existsByEmailIgnoreCase(email)) {
             throw new IllegalArgumentException("이미 사용 중인 이메일입니다.");
         }
 
-        // 비밀번호 암호화
-        String encodedPassword = passwordEncoder.encode(request.password());
-
-        // 저장할 새로운 유저 객체(Entity) 생성
         AppUser newUser = new AppUser(
-                request.nickname(),
-                request.email(),
-                encodedPassword,
-                Role.ROLE_USER // 가입하는 사람은 기본적으로 일반 유저(USER) 권한
+                request.nickname().trim(),
+                email,
+                passwordEncoder.encode(request.password()),
+                Role.ROLE_USER
         );
 
         emailAuthRepository.delete(emailAuth);
-        // DB에 저장하고, 저장된 유저의 고유 ID(PK)를 반환
-        AppUser savedUser = appUserRepository.save(newUser);
-        return savedUser.getId();
+        return appUserRepository.save(newUser).getId();
     }
 
     @Transactional
     public TokenResponse login(LoginRequest request) {
-        // 사용자 enumeration 방지: 이메일/비밀번호 실패 모두 동일 메시지로 응답.
-        // 디버깅을 위해 서버 로그에만 어떤 케이스였는지 남긴다.
-        AppUser user = appUserRepository.findByEmail(request.getEmail())
+        String email = EmailNormalizer.normalize(request.getEmail());
+        AppUser user = appUserRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> {
-                    log.warn("로그인 실패 - 미가입 이메일: {}", request.getEmail());
-                    return new IllegalArgumentException("이메일 또는 비밀번호가 일치하지 않습니다.");
+                    log.warn("로그인 실패 - 미가입 계정");
+                    return new KeepEatException(ErrorCode.INVALID_CREDENTIALS);
                 });
 
-        // 비밀번호 검증
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword())) {
-            log.warn("로그인 실패 - 비밀번호 불일치: userId={}", user.getId());
-            throw new IllegalArgumentException("이메일 또는 비밀번호가 일치하지 않습니다.");
+        if (!LOCAL_PROVIDER.equals(user.getProvider())
+                || !passwordEncoder.matches(request.getPassword(), user.getPassword())) {
+            log.warn("로그인 실패 - 자격 증명 불일치: userId={}", user.getId());
+            throw new KeepEatException(ErrorCode.INVALID_CREDENTIALS);
         }
 
-        // 비밀번호까지 맞다면, 토큰 2개 발급
-        String accessToken = jwtProvider.createAccessToken(user.getEmail(), user.getId(), user.getRole());
-        String rawRefreshToken = jwtProvider.createRefreshToken(user.getEmail(), user.getId(), user.getRole());
-
-        String hashedRefreshToken = hashToken(rawRefreshToken);
-        user.updateRefreshToken(hashedRefreshToken);
-
-        // 발급된 토큰들을 TokenResponse 바구니에 담아서 반환
-        return new TokenResponse(accessToken, rawRefreshToken);
+        return issueNewSessionTokens(user);
     }
 
     @Transactional
-    public void logout(Long userId) {
-        AppUser user = appUserRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+    public void logout(Long userId, String authenticatedSessionId, LogoutRequest request) {
+        AppUser user = findActiveUser(userId);
+        String sessionId = authenticatedSessionId;
+
+        if (sessionId == null && request != null && request.refreshToken() != null
+                && jwtProvider.validateToken(request.refreshToken())) {
+            sessionId = jwtProvider.getSessionId(request.refreshToken());
+        }
+
+        if (sessionId != null) {
+            userSessionRepository.deleteByIdAndUserId(sessionId, userId);
+            deviceTokenRepository.deleteAllBySessionId(sessionId);
+            if (request != null && request.deviceToken() != null && !request.deviceToken().isBlank()) {
+                deviceTokenRepository.deleteByUserIdAndToken(userId, request.deviceToken());
+            }
+        } else {
+            // 배포 전 발급된 sid 없는 토큰은 세션을 특정할 수 없어 전체 로그아웃한다.
+            userSessionRepository.deleteAllByUserId(userId);
+            if (request != null && request.deviceToken() != null && !request.deviceToken().isBlank()) {
+                deviceTokenRepository.deleteByUserIdAndToken(userId, request.deviceToken());
+            } else {
+                deviceTokenRepository.deleteAllByUserId(userId);
+            }
+        }
+        user.clearRefreshToken();
+    }
+
+    @Transactional
+    public void logoutAll(Long userId) {
+        AppUser user = findActiveUser(userId);
+        userSessionRepository.deleteAllByUserId(userId);
+        deviceTokenRepository.deleteAllByUserId(userId);
         user.clearRefreshToken();
     }
 
     @Transactional
     public TokenResponse refreshTokens(TokenRefreshRequest request) {
-        // 프론트엔드에서 보낸 '원본' Refresh Token
         String rawRefreshToken = request.getRefreshToken();
-
-        // 1차 검증: 토큰 자체가 위조되지 않았고, 만료되지 않았는지 확인
-        if (!jwtProvider.validateToken(rawRefreshToken)) {
-            throw new IllegalArgumentException("유효하지 않거나 만료된 Refresh Token입니다. 다시 로그인해주세요.");
+        if (!jwtProvider.validateToken(rawRefreshToken) || !jwtProvider.isRefreshToken(rawRefreshToken)) {
+            throw new KeepEatException(ErrorCode.INVALID_TOKEN);
         }
 
-        // 토큰에서 이메일을 꺼내 유저 검색
-        String email = jwtProvider.getEmail(rawRefreshToken);
-        AppUser user = appUserRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+        Long userId = jwtProvider.getId(rawRefreshToken);
+        AppUser user = findActiveUser(userId);
+        String sessionId = jwtProvider.getSessionId(rawRefreshToken);
 
-        // 2차 검증: 프론트가 보낸 원본 토큰과 DB의 암호화된 토큰이 짝이 맞는지 확인
-        if (user.getRefreshToken() == null || !hashToken(rawRefreshToken).equals(user.getRefreshToken())) {
-            throw new IllegalArgumentException("이미 로그아웃 되었거나 무효화된 토큰입니다. 다시 로그인해주세요.");
+        if (sessionId == null) {
+            // 기존 버전의 refresh token을 새 세션 구조로 한 번만 승격한다.
+            if (user.getRefreshToken() == null || !hashToken(rawRefreshToken).equals(user.getRefreshToken())) {
+                throw new KeepEatException(ErrorCode.INVALID_TOKEN);
+            }
+            user.clearRefreshToken();
+            return issueNewSessionTokens(user);
         }
 
-        // 검증을 모두 통과했으니 새로운 토큰 세트를 발급
-        String newAccessToken = jwtProvider.createAccessToken(email, user.getId(), user.getRole());
-        String newRawRefreshToken = jwtProvider.createRefreshToken(email, user.getId(), user.getRole());
+        UserSession session = userSessionRepository.findByIdAndUserIdForUpdate(sessionId, userId)
+                .filter(found -> found.isUsable(Instant.now()))
+                .filter(found -> MessageDigest.isEqual(
+                        found.getRefreshTokenHash().getBytes(StandardCharsets.UTF_8),
+                        hashToken(rawRefreshToken).getBytes(StandardCharsets.UTF_8)))
+                .orElseThrow(() -> new KeepEatException(ErrorCode.INVALID_TOKEN));
 
-        // 새로 발급한 Refresh Token도 암호화해서 DB를 업데이트 (Token Rotation)
-        String newHashedRefreshToken = hashToken(newRawRefreshToken);
-        user.updateRefreshToken(newHashedRefreshToken);
-
-        return new TokenResponse(newAccessToken, newRawRefreshToken);
+        return rotateSessionTokens(user, session);
     }
 
-    // 내 정보 조회 로직, 혹시 몰라서 만들어 둠
+    @Transactional(readOnly = true)
     public UserResponse getUserInfo(Long userId) {
-        AppUser user = appUserRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
+        AppUser user = findActiveUser(userId);
         return new UserResponse(
-                user.getId(),
-                user.getEmail(),
-                user.getNickname(),
-                user.getRole(),
-                user.getProvider(),
-                user.isNotificationEnabled()
+                user.getId(), user.getEmail(), user.getNickname(), user.getRole(),
+                user.getProvider(), user.isNotificationEnabled()
         );
+    }
+
+    @Transactional
+    public void deleteUser(Long userId, UserDeleteRequest request) {
+        AppUser user = findActiveUser(userId);
+        if (LOCAL_PROVIDER.equals(user.getProvider())) {
+            if (request == null || request.password() == null || request.password().isBlank()) {
+                throw new IllegalArgumentException("탈퇴를 위해서는 현재 비밀번호 입력이 필요합니다.");
+            }
+            if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+                throw new KeepEatException(ErrorCode.INVALID_CREDENTIALS);
+            }
+        }
+
+        String originalEmail = user.getEmail();
+        recipeReactionRepository.deleteAllByAppUserId(userId);
+        userRecipeRepository.deleteAllByAppUserId(userId);
+        userIngredientRepository.deleteAllByUserId(userId);
+        notificationRepository.deleteAllByUserId(userId);
+        deviceTokenRepository.deleteAllByUserId(userId);
+        userSessionRepository.deleteAllByUserId(userId);
+        oauthLoginCodeRepository.deleteAllByUserId(userId);
+        passwordResetTokenRepository.deleteAllByUserId(userId);
+        emailAuthRepository.findByEmail(originalEmail).ifPresent(emailAuthRepository::delete);
+
+        user.markAsDeleted();
+        appUserRepository.flush();
+        appUserRepository.delete(user);
+        log.info("유저 탈퇴 및 개인정보 익명화 완료: userId={}", userId);
+    }
+
+    @Transactional
+    public boolean setNotificationEnabled(Long userId, boolean enabled) {
+        AppUser user = findActiveUser(userId);
+        user.setNotificationEnabled(enabled);
+        return user.isNotificationEnabled();
+    }
+
+    public void requestPasswordReset(String rawEmail) {
+        String email = EmailNormalizer.normalize(rawEmail);
+        appUserRepository.findByEmailIgnoreCase(email).ifPresentOrElse(user -> {
+            if (!LOCAL_PROVIDER.equals(user.getProvider())) {
+                emailService.sendPasswordResetUnavailable(email);
+                return;
+            }
+            emailService.sendPasswordResetCode(email);
+        }, () -> log.warn("비밀번호 재설정 요청 - 미가입 계정"));
+    }
+
+    @Transactional(noRollbackFor = EmailVerificationException.class)
+    public PasswordResetTokenResponse verifyPasswordReset(String rawEmail, String code) {
+        String email = EmailNormalizer.normalize(rawEmail);
+        AppUser user = appUserRepository.findByEmailIgnoreCase(email)
+                .filter(found -> LOCAL_PROVIDER.equals(found.getProvider()))
+                .orElseThrow(() -> new IllegalArgumentException("인증번호가 올바르지 않거나 만료되었습니다."));
+
+        emailService.consumePasswordResetCode(email, code);
+        passwordResetTokenRepository.deleteAllByUserId(user.getId());
+        passwordResetTokenRepository.deleteAllByExpiresAtBefore(LocalDateTime.now());
+
+        String rawToken = generateOpaqueCode();
+        passwordResetTokenRepository.save(PasswordResetToken.issue(
+                hashToken(rawToken),
+                user.getId(),
+                LocalDateTime.now().plusMinutes(PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES)
+        ));
+        return new PasswordResetTokenResponse(rawToken, PASSWORD_RESET_TOKEN_EXPIRATION_MINUTES * 60L);
+    }
+
+    @Transactional
+    public void resetPassword(PasswordResetRequest request) {
+        PasswordResetToken resetToken = passwordResetTokenRepository
+                .findByTokenHashForUpdate(hashToken(request.resetToken()))
+                .filter(token -> token.isUsable(LocalDateTime.now()))
+                .orElseThrow(() -> new KeepEatException(ErrorCode.INVALID_TOKEN));
+
+        AppUser user = findActiveUser(resetToken.getUserId());
+        user.updatePassword(passwordEncoder.encode(request.newPassword()));
+        user.clearRefreshToken();
+        userSessionRepository.deleteAllByUserId(user.getId());
+        deviceTokenRepository.deleteAllByUserId(user.getId());
+        passwordResetTokenRepository.deleteAllByUserId(user.getId());
+    }
+
+    @Transactional
+    public void changePassword(Long userId, PasswordChangeRequest request) {
+        AppUser user = findActiveUser(userId);
+        if (!LOCAL_PROVIDER.equals(user.getProvider())) {
+            throw new IllegalArgumentException("소셜 로그인 계정은 비밀번호를 변경할 수 없습니다.");
+        }
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
+            throw new KeepEatException(ErrorCode.INVALID_CREDENTIALS);
+        }
+        if (passwordEncoder.matches(request.newPassword(), user.getPassword())) {
+            throw new IllegalArgumentException("새 비밀번호는 현재 비밀번호와 달라야 합니다.");
+        }
+
+        user.updatePassword(passwordEncoder.encode(request.newPassword()));
+        user.clearRefreshToken();
+        userSessionRepository.deleteAllByUserId(userId);
+        deviceTokenRepository.deleteAllByUserId(userId);
+        passwordResetTokenRepository.deleteAllByUserId(userId);
+        log.info("비밀번호 변경 및 전체 세션 폐기 완료: userId={}", userId);
+    }
+
+    @Transactional
+    public String issueOAuthLoginCode(Long userId) {
+        AppUser user = findActiveUser(userId);
+        LocalDateTime now = LocalDateTime.now();
+        oauthLoginCodeRepository.deleteAllByExpiresAtBefore(now);
+
+        String code = generateOpaqueCode();
+        oauthLoginCodeRepository.save(OAuthLoginCode.issue(
+                hashToken(code), user.getId(), now.plusMinutes(OAUTH_LOGIN_CODE_EXPIRATION_MINUTES)
+        ));
+        return code;
+    }
+
+    @Transactional
+    public TokenResponse exchangeOAuthLoginCode(String code) {
+        OAuthLoginCode loginCode = oauthLoginCodeRepository.findByCodeHashForUpdate(hashToken(code))
+                .orElseThrow(() -> new KeepEatException(ErrorCode.INVALID_TOKEN));
+        LocalDateTime now = LocalDateTime.now();
+        if (!loginCode.isUsable(now)) {
+            oauthLoginCodeRepository.delete(loginCode);
+            throw new KeepEatException(ErrorCode.INVALID_TOKEN);
+        }
+
+        AppUser user = findActiveUser(loginCode.getUserId());
+        loginCode.consume(now);
+        oauthLoginCodeRepository.delete(loginCode);
+        return issueNewSessionTokens(user);
     }
 
     public static String hashToken(String token) {
@@ -153,99 +327,41 @@ public class AppUserService {
             byte[] hash = digest.digest(token.getBytes(StandardCharsets.UTF_8));
             return Base64.getEncoder().encodeToString(hash);
         } catch (NoSuchAlgorithmException e) {
-            throw new RuntimeException("해싱 알고리즘을 찾을 수 없습니다.", e);
+            throw new IllegalStateException("SHA-256 알고리즘을 사용할 수 없습니다.", e);
         }
     }
 
-    @Transactional
-    public void deleteUser(Long userId, UserDeleteRequest request) {
-
-        AppUser user = appUserRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
-
-        // LOCAL 가입자는 본인 확인을 위해 현재 비밀번호 재검증.
-        // OAuth(GOOGLE 등) 가입자는 외부 인증으로 본인 확인된 상태이므로 password 불필요.
-        if (LOCAL_PROVIDER.equals(user.getProvider())) {
-            if (request == null || request.password() == null || request.password().isBlank()) {
-                throw new IllegalArgumentException("탈퇴를 위해서는 현재 비밀번호 입력이 필요합니다.");
-            }
-            if (!passwordEncoder.matches(request.password(), user.getPassword())) {
-                throw new IllegalArgumentException("비밀번호가 일치하지 않습니다.");
-            }
-        }
-
-        // 1) 푸시 토큰 즉시 정리 — 탈퇴 후 푸시 알림이 가지 않도록 차단
-        deviceTokenRepository.deleteAllByUserId(userId);
-
-        // 2) email 변조 + refresh token 정리 — 같은 이메일 재가입 허용 + 토큰 무효화
-        user.markAsDeleted();
-
-        appUserRepository.flush();
-
-        // 3) soft delete — @SQLDelete가 deleted_at 컬럼을 채움
-        appUserRepository.delete(user);
-
-        log.info("👋 유저 ID [{}] 탈퇴 완료 (soft delete, provider={})", userId, user.getProvider());
+    private AppUser findActiveUser(Long userId) {
+        return appUserRepository.findById(userId)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.USER_NOT_FOUND));
     }
 
-    @Transactional
-    public boolean toggleNotification(Long userId) {
-        AppUser user = appUserRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
-
-        // 현재 상태의 반대로 뒤집기 (true -> false, false -> true)
-        user.toggleNotification(!user.isNotificationEnabled());
-
-        return user.isNotificationEnabled(); // 변경된 상태 반환
+    private TokenResponse issueNewSessionTokens(AppUser user) {
+        String sessionId = UUID.randomUUID().toString();
+        String accessToken = jwtProvider.createAccessToken(user.getEmail(), user.getId(), user.getRole(), sessionId);
+        String rawRefreshToken = jwtProvider.createRefreshToken(user.getEmail(), user.getId(), user.getRole(), sessionId);
+        userSessionRepository.save(UserSession.create(
+                sessionId,
+                user.getId(),
+                hashToken(rawRefreshToken),
+                Instant.now().plusMillis(jwtProvider.getRefreshTokenValidityTime())
+        ));
+        return new TokenResponse(accessToken, rawRefreshToken);
     }
 
-    @Transactional
-    public void sendTemporaryPassword(String email) {
-        // 1. 해당 이메일로 가입한 유저가 있는지 검증
-        AppUser user = appUserRepository.findByEmail(email)
-                .orElseThrow(() -> new IllegalArgumentException("해당 이메일로 가입된 유저를 찾을 수 없습니다."));
-
-        // 2. 임시 비밀번호 생성 (8자리 영문 대소문자 + 숫자 혼합 형태)
-        String tempPassword = generateRandomPassword();
-
-        // 3. DB에 암호화된 임시 비밀번호 저장
-        // (AppUser 엔티티 내부에 비밀번호 변경용 메서드가 있다면 그걸 쓰셔도 좋습니다)
-        String encodedPassword = passwordEncoder.encode(tempPassword);
-        user.updatePassword(encodedPassword);
-
-        // 4. 이메일 발송 (이메일 실패 시 전체 트랜잭션이 롤백되도록 구성)
-        emailService.sendTemporaryPassword(email, tempPassword);
+    private TokenResponse rotateSessionTokens(AppUser user, UserSession session) {
+        String accessToken = jwtProvider.createAccessToken(user.getEmail(), user.getId(), user.getRole(), session.getId());
+        String rawRefreshToken = jwtProvider.createRefreshToken(user.getEmail(), user.getId(), user.getRole(), session.getId());
+        session.rotate(
+                hashToken(rawRefreshToken),
+                Instant.now().plusMillis(jwtProvider.getRefreshTokenValidityTime())
+        );
+        return new TokenResponse(accessToken, rawRefreshToken);
     }
 
-    // 12자리 임시 비밀번호: 영문 대소문자 + 숫자 + 일부 특수문자 (혼동되는 0/O, 1/l/I는 제외)
-    private static final char[] PASSWORD_CHARS =
-            "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$".toCharArray();
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
-
-    private String generateRandomPassword() {
-        StringBuilder sb = new StringBuilder(12);
-        for (int i = 0; i < 12; i++) {
-            sb.append(PASSWORD_CHARS[SECURE_RANDOM.nextInt(PASSWORD_CHARS.length)]);
-        }
-        return sb.toString();
+    private String generateOpaqueCode() {
+        byte[] bytes = new byte[32];
+        SECURE_RANDOM.nextBytes(bytes);
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
-
-    @Transactional
-    public void changePassword(Long userId, PasswordChangeRequest request) {
-        // 로그인한 유저 정보 조회
-        AppUser user = appUserRepository.findById(userId)
-                .orElseThrow(() -> new IllegalArgumentException("존재하지 않는 유저입니다."));
-
-        // 입력한 현재 비밀번호가 DB에 저장된 암호화된 비밀번호와 일치하는지 검증
-        if (!passwordEncoder.matches(request.currentPassword(), user.getPassword())) {
-            throw new IllegalArgumentException("현재 비밀번호가 일치하지 않습니다.");
-        }
-
-        // 3. 새 비밀번호 암호화 후 엔티티 메서드를 통해 반영 (아까 만든 updatePassword 사용)
-        String encodedPassword = passwordEncoder.encode(request.newPassword());
-        user.updatePassword(encodedPassword);
-
-        log.info("🔐 유저 ID [{}]의 비밀번호가 성공적으로 변경되었습니다.", userId);
-    }
-
 }

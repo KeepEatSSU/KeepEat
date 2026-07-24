@@ -51,9 +51,6 @@ jwt:
   access-expiration: 3600000
   refresh-expiration: 1209600000
 
-firebase:
-  key-path:
-
 app:
   oauth2:
     redirect-uri: http://localhost:3000/oauth2/redirect

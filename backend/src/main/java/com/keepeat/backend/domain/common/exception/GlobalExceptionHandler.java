@@ -3,6 +3,11 @@ package com.keepeat.backend.domain.common.exception;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
+import org.springframework.dao.DataIntegrityViolationException;
+import jakarta.validation.ConstraintViolationException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -16,7 +21,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(KeepEatException.class)
     public ResponseEntity<Map<String, String>> handleKeepEatException(KeepEatException e) {
         ErrorCode code = e.getErrorCode();
-        return ResponseEntity.status(code.getStatus()).body(Map.of(
+        ResponseEntity.BodyBuilder response = ResponseEntity.status(code.getStatus());
+        if (code == ErrorCode.RATE_LIMIT_EXCEEDED) {
+            response.header("Retry-After", "60");
+        }
+        return response.body(Map.of(
                 "status", "error",
                 "code", code.name(),
                 "message", code.getMessage()
@@ -37,8 +46,36 @@ public class GlobalExceptionHandler {
         Map<String, String> errorResponse = new HashMap<>();
         errorResponse.put("status", "error");
         errorResponse.put("code", "INVALID_INPUT");
-        errorResponse.put("message", "입력값 형식이 올바르지 않습니다.");
+        String message = e.getBindingResult().getFieldErrors().stream()
+                .findFirst()
+                .map(error -> error.getDefaultMessage() == null ? "입력값 형식이 올바르지 않습니다." : error.getDefaultMessage())
+                .orElse("입력값 형식이 올바르지 않습니다.");
+        errorResponse.put("message", message);
         return ResponseEntity.badRequest().body(errorResponse);
+    }
+
+    @ExceptionHandler({
+            MethodArgumentTypeMismatchException.class,
+            HttpMessageNotReadableException.class,
+            MissingServletRequestParameterException.class,
+            ConstraintViolationException.class
+    })
+    public ResponseEntity<Map<String, String>> handleMalformedRequest(Exception e) {
+        return ResponseEntity.badRequest().body(Map.of(
+                "status", "error",
+                "code", "INVALID_INPUT",
+                "message", "입력값 형식이 올바르지 않습니다."
+        ));
+    }
+
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<Map<String, String>> handleDataIntegrityViolation(DataIntegrityViolationException e) {
+        log.warn("Data integrity violation: {}", e.getMostSpecificCause().getClass().getSimpleName());
+        return ResponseEntity.status(409).body(Map.of(
+                "status", "error",
+                "code", "DATA_CONFLICT",
+                "message", "이미 처리되었거나 충돌하는 요청입니다."
+        ));
     }
 
     @ExceptionHandler(Exception.class)

@@ -3,6 +3,8 @@ package com.keepeat.backend.domain.user.controller;
 import com.keepeat.backend.domain.user.dto.*;
 import com.keepeat.backend.domain.user.service.AppUserService;
 import com.keepeat.backend.domain.user.service.EmailService;
+import com.keepeat.backend.domain.user.service.EmailNormalizer;
+import com.keepeat.backend.domain.security.RequestRateLimiter;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -13,7 +15,9 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.core.Authentication;
+import jakarta.servlet.http.HttpServletRequest;
 
+import java.time.Duration;
 import java.util.Map;
 
 @Tag(name = "User API", description = "사용자 인증 및 관리 API")
@@ -24,11 +28,13 @@ public class AppUserController {
 
     private final EmailService emailService;
     private final AppUserService appUserService;
+    private final RequestRateLimiter rateLimiter;
 
     // POST http://localhost:8080/api/users/signup
     @Operation(summary = "회원가입", description = "이메일, 비밀번호, 닉네임으로 회원가입을 진행합니다.")
     @PostMapping("/signup")
-    public ResponseEntity<Long> signUp(@Valid @RequestBody SignUpRequest request) {
+    public ResponseEntity<Long> signUp(@Valid @RequestBody SignUpRequest request, HttpServletRequest httpRequest) {
+        rateLimiter.check(httpRequest, "signup", EmailNormalizer.normalize(request.email()), 5, Duration.ofHours(1));
 
         Long savedUserId = appUserService.signUp(request);
 
@@ -38,7 +44,8 @@ public class AppUserController {
     // POST http://localhost:8080/api/users/login
     @Operation(summary = "로그인", description = "이메일과 비밀번호로 로그인하여 JWT 토큰을 발급받습니다.")
     @PostMapping("/login")
-    public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request) {
+    public ResponseEntity<TokenResponse> login(@Valid @RequestBody LoginRequest request, HttpServletRequest httpRequest) {
+        rateLimiter.check(httpRequest, "login", EmailNormalizer.normalize(request.getEmail()), 10, Duration.ofMinutes(15));
 
         TokenResponse tokenResponse = appUserService.login(request);
 
@@ -46,18 +53,33 @@ public class AppUserController {
     }
 
     // POST http://localhost:8080/api/users/logout
-    @Operation(summary = "로그아웃", description = "현재 사용자의 Refresh Token을 만료시킵니다.")
+    @Operation(summary = "로그아웃", description = "현재 세션과 연결된 푸시 토큰을 즉시 만료시킵니다.")
     @PostMapping("/logout")
-    public ResponseEntity<String> logout(@AuthenticationPrincipal Long userId) {
-        appUserService.logout(userId);
+    public ResponseEntity<String> logout(
+            @AuthenticationPrincipal Long userId,
+            Authentication authentication,
+            @Valid @RequestBody(required = false) LogoutRequest request
+    ) {
+        String sessionId = authentication != null && authentication.getDetails() instanceof String value ? value : null;
+        appUserService.logout(userId, sessionId, request);
         return ResponseEntity.ok("로그아웃되었습니다.");
+    }
+
+    @PostMapping("/logout-all")
+    public ResponseEntity<Void> logoutAll(@AuthenticationPrincipal Long userId) {
+        appUserService.logoutAll(userId);
+        return ResponseEntity.noContent().build();
     }
 
 
     // POST http://localhost:8080/api/users/refresh
     @Operation(summary = "토큰 재발급", description = "Refresh Token을 사용하여 새로운 토큰 세트를 발급받습니다.")
     @PostMapping("/refresh")
-    public ResponseEntity<TokenResponse> refresh(@RequestBody TokenRefreshRequest request) {
+    public ResponseEntity<TokenResponse> refresh(
+            @Valid @RequestBody TokenRefreshRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        rateLimiter.check(httpRequest, "refresh", "token", 60, Duration.ofMinutes(5));
         // 서비스에게 재발급을 시키고 새로운 토큰 세트를 리턴
         TokenResponse newTokens = appUserService.refreshTokens(request);
         return ResponseEntity.ok(newTokens);
@@ -73,36 +95,63 @@ public class AppUserController {
     }
 
 
-    @Operation(summary = "알림 수신 설정 변경", description = "전체 푸시 알림의 수신 여부를 토글(ON/OFF)합니다.")
+    @Operation(summary = "알림 수신 설정 변경", description = "전체 푸시 알림의 수신 여부를 지정합니다.")
     @PatchMapping("/me/notification-setting")
-    public ResponseEntity<String> toggleNotificationSetting(@AuthenticationPrincipal Long userId) {
+    public ResponseEntity<String> toggleNotificationSetting(
+            @AuthenticationPrincipal Long userId,
+            @Valid @RequestBody NotificationSettingRequest request
+    ) {
 
-        boolean isEnabled = appUserService.toggleNotification(userId);
+        boolean isEnabled = appUserService.setNotificationEnabled(userId, request.enabled());
         String message = isEnabled ? "알림 수신이 켜졌습니다." : "알림 수신이 꺼졌습니다.";
 
         return ResponseEntity.ok(message);
     }
 
-    // POST /api/v1/users/password/find
+    // POST /api/users/password/find
     @PostMapping("/password/find")
-    public ResponseEntity<String> findPassword(@Valid @RequestBody PasswordFindRequest request) {
+    public ResponseEntity<String> findPassword(
+            @Valid @RequestBody PasswordFindRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        rateLimiter.check(httpRequest, "password-find", EmailNormalizer.normalize(request.email()), 3, Duration.ofMinutes(15));
 
         appUserService.requestPasswordReset(request.email());
 
-        return ResponseEntity.ok("가입된 이메일이라면 비밀번호 재설정 인증번호가 발송되었습니다.");
+        return ResponseEntity.ok("비밀번호 재설정 인증번호가 발송되었습니다.");
     }
 
     @PostMapping("/password/find/verify")
-    public ResponseEntity<String> verifyPasswordReset(@Valid @RequestBody PasswordResetVerifyRequest request) {
+    @Operation(summary = "비밀번호 재설정 인증", description = "인증번호를 검증하고 10분간 유효한 일회용 재설정 토큰을 발급합니다.")
+    public ResponseEntity<PasswordResetTokenResponse> verifyPasswordReset(
+            @Valid @RequestBody PasswordResetVerifyRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        rateLimiter.check(httpRequest, "password-verify", EmailNormalizer.normalize(request.email()), 10, Duration.ofMinutes(15));
 
-        appUserService.verifyPasswordResetAndSendTemporaryPassword(request.email(), request.code());
+        PasswordResetTokenResponse response = appUserService.verifyPasswordReset(request.email(), request.code());
 
-        return ResponseEntity.ok("인증이 완료되어 임시 비밀번호가 이메일로 발송되었습니다.");
+        return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/password/reset")
+    @Operation(summary = "비밀번호 재설정", description = "일회용 재설정 토큰으로 새 비밀번호를 설정하고 모든 세션을 종료합니다.")
+    public ResponseEntity<Void> resetPassword(
+            @Valid @RequestBody PasswordResetRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        rateLimiter.check(httpRequest, "password-reset", "token", 10, Duration.ofMinutes(15));
+        appUserService.resetPassword(request);
+        return ResponseEntity.noContent().build();
     }
 
     @Operation(summary = "OAuth 로그인 코드 교환", description = "OAuth 리다이렉트로 받은 일회용 코드를 JWT 토큰 세트로 교환합니다.")
     @PostMapping("/oauth2/exchange")
-    public ResponseEntity<TokenResponse> exchangeOAuthCode(@Valid @RequestBody OAuthCodeExchangeRequest request) {
+    public ResponseEntity<TokenResponse> exchangeOAuthCode(
+            @Valid @RequestBody OAuthCodeExchangeRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        rateLimiter.check(httpRequest, "oauth-exchange", "code", 15, Duration.ofMinutes(5));
         TokenResponse tokenResponse = appUserService.exchangeOAuthLoginCode(request.code());
         return ResponseEntity.ok(tokenResponse);
     }
@@ -130,7 +179,7 @@ public class AppUserController {
     @DeleteMapping("/me")
     public ResponseEntity<Void> deleteAccount(
             @AuthenticationPrincipal Long userId,
-            @RequestBody(required = false) UserDeleteRequest request
+            @Valid @RequestBody(required = false) UserDeleteRequest request
     ) {
         appUserService.deleteUser(userId, request);
         return ResponseEntity.noContent().build();
@@ -139,7 +188,11 @@ public class AppUserController {
     // 인증번호 발송 API
     @Operation(summary = "회원가입 이메일 인증번호 전송", description = "회원가입 시 로그인 인증을 진행합니다.")
     @PostMapping("/send")
-    public ResponseEntity<String> sendEmailAuth(@Valid @RequestBody EmailSendRequest request) {
+    public ResponseEntity<String> sendEmailAuth(
+            @Valid @RequestBody EmailSendRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        rateLimiter.check(httpRequest, "email-send", EmailNormalizer.normalize(request.email()), 3, Duration.ofMinutes(15));
         emailService.sendVerificationCode(request.email());
         return ResponseEntity.ok("인증번호가 발송되었습니다.");
     }
@@ -147,7 +200,11 @@ public class AppUserController {
     //  인증번호 확인 API
     @Operation(summary = "회원가입 이메일 인증번호 확인", description = "이메일 인증번호를 확인합니다.")
     @PostMapping("/verify")
-    public ResponseEntity<String> verifyEmailAuth(@Valid @RequestBody EmailVerifyRequest request) {
+    public ResponseEntity<String> verifyEmailAuth(
+            @Valid @RequestBody EmailVerifyRequest request,
+            HttpServletRequest httpRequest
+    ) {
+        rateLimiter.check(httpRequest, "email-verify", EmailNormalizer.normalize(request.email()), 10, Duration.ofMinutes(15));
         emailService.verifyAuthCode(request.email(), request.code());
         return ResponseEntity.ok("이메일 인증이 완료되었습니다.");
     }

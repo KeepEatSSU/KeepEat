@@ -5,7 +5,6 @@ import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.notification.dto.NotificationPageResponse;
 import com.keepeat.backend.domain.notification.dto.NotificationResponse;
 import com.keepeat.backend.domain.notification.dto.PushSendRequest;
-import com.keepeat.backend.domain.notification.entity.DeviceToken;
 import com.keepeat.backend.domain.notification.entity.Notification;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
@@ -21,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.time.Instant;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Slf4j
@@ -33,23 +34,14 @@ public class NotificationService {
 
     private final DeviceTokenRepository deviceTokenRepository;
     private final NotificationRepository notificationRepository;
-    private final ExpoPushService expoPushService;
+    private final PushDispatchService pushDispatchService;
     private final AppUserRepository appUserRepository;
 
     @Transactional
-    public void registerToken(Long userId, String token) {
+    public void registerToken(Long userId, String sessionId, String token) {
         requireActiveUser(userId);
-
-        deviceTokenRepository.findByToken(token).ifPresentOrElse(existingToken -> {
-            if (!existingToken.getUserId().equals(userId)) {
-                existingToken.reassignTo(userId);
-                log.info("기기 토큰 소유자를 유저 {}로 변경했습니다.", userId);
-            }
-        }, () -> {
-            DeviceToken newToken = new DeviceToken(userId, token);
-            deviceTokenRepository.save(newToken);
-            log.info("유저 {}의 새로운 기기 토큰이 등록되었습니다.", userId);
-        });
+        deviceTokenRepository.upsertToken(userId, sessionId, token, LocalDateTime.now());
+        log.info("기기 토큰 등록 또는 세션 갱신 완료: userId={}", userId);
     }
 
     @Transactional
@@ -59,12 +51,31 @@ public class NotificationService {
 
     @Transactional
     public boolean sendNotificationOnce(Long userId, String title, String body, NotificationType type, String targetId, String dedupeKey) {
-        if (notificationRepository.existsByDedupeKey(dedupeKey)) {
+        AppUser user = requireActiveUser(userId);
+        validateNotificationPayload(title, body, type, targetId, dedupeKey);
+        if (dedupeKey == null || dedupeKey.isBlank()) {
+            throw new IllegalArgumentException("중복 방지 알림에는 dedupeKey가 필요합니다.");
+        }
+
+        int inserted = notificationRepository.insertIfAbsent(
+                userId,
+                title,
+                body,
+                type.name(),
+                targetId,
+                dedupeKey,
+                Instant.now()
+        );
+        if (inserted == 0) {
             log.info("중복 알림을 생략했습니다. dedupeKey={}", dedupeKey);
             return false;
         }
 
-        sendNotificationInternal(userId, title, body, type, targetId, dedupeKey);
+        if (user.isNotificationEnabled()) {
+            sendPushAfterCommit(userId, title, body, type, targetId);
+        } else {
+            log.info("유저 {}는 알림을 끈 상태입니다. 히스토리만 저장하고 푸시 알림은 생략합니다.", userId);
+        }
         return true;
     }
 
@@ -77,13 +88,10 @@ public class NotificationService {
         Pageable pageable = PageRequest.of(0, size + 1);
         List<Notification> notifications = notificationRepository.findNotificationsByCursor(userId, cursor, pageable);
 
-        boolean hasNext = false;
-        if (notifications.size() > size) {
-            hasNext = true;
-            notifications.remove(size);
-        }
+        boolean hasNext = notifications.size() > size;
+        List<Notification> pageItems = hasNext ? notifications.subList(0, size) : notifications;
 
-        List<NotificationResponse> notificationResponses = notifications.stream()
+        List<NotificationResponse> notificationResponses = pageItems.stream()
                 .map(NotificationResponse::from)
                 .toList();
 
@@ -99,12 +107,8 @@ public class NotificationService {
     public void markAsRead(Long notificationId, Long userId) {
         requireActiveUser(userId);
 
-        Notification notification = notificationRepository.findById(notificationId)
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, userId)
                 .orElseThrow(() -> new KeepEatException(ErrorCode.NOTIFICATION_NOT_FOUND));
-
-        if (!notification.getUserId().equals(userId)) {
-            throw new KeepEatException(ErrorCode.NOTIFICATION_ACCESS_DENIED);
-        }
 
         notification.markAsRead();
     }
@@ -153,17 +157,9 @@ public class NotificationService {
         log.info("유저 {}가 알림 {}건을 일괄 삭제했습니다. (요청 {}건 중)", userId, deleted, ids.size());
     }
 
-    @Transactional
-    public void sendTestNotification(Long userId, NotificationType type, String title, String message) {
-        String resolvedTitle = (title != null && !title.isBlank()) ? title : defaultTitle(type);
-        String resolvedBody = (message != null && !message.isBlank()) ? message : defaultBody(type);
-
-        sendNotification(userId, resolvedTitle, resolvedBody, type, null);
-        log.info("유저 {} 에게 테스트 알림 발사 (type={})", userId, type);
-    }
-
     private void sendNotificationInternal(Long userId, String title, String body, NotificationType type, String targetId, String dedupeKey) {
         AppUser user = requireActiveUser(userId);
+        validateNotificationPayload(title, body, type, targetId, dedupeKey);
 
         Notification notification = new Notification(userId, title, body, type, targetId, dedupeKey);
         notificationRepository.saveAndFlush(notification);
@@ -185,17 +181,13 @@ public class NotificationService {
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                sendPush(userId, title, body, type, targetId);
+                pushDispatchService.dispatch(userId, title, body, type, targetId);
             }
         });
     }
 
     private void sendPush(Long userId, String title, String body, NotificationType type, String targetId) {
-        List<DeviceToken> tokens = deviceTokenRepository.findAllByUserId(userId);
-        for (DeviceToken deviceToken : tokens) {
-            PushSendRequest request = new PushSendRequest(deviceToken.getToken(), title, body, type, targetId);
-            expoPushService.sendMessage(request);
-        }
+        pushDispatchService.dispatch(userId, title, body, type, targetId);
     }
 
     private AppUser requireActiveUser(Long userId) {
@@ -215,19 +207,28 @@ public class NotificationService {
         }
     }
 
-    private String defaultTitle(NotificationType type) {
-        return switch (type) {
-            case NOTICE -> "📢 [TEST] 공지사항";
-            case EXPIRY_SOON -> "⏳ [TEST] 식재료 소비기한 임박";
-            case RECIPE_READY -> "🍳 [TEST] AI 레시피 생성 완료";
-        };
+    private void validateNotificationPayload(
+            String title,
+            String body,
+            NotificationType type,
+            String targetId,
+            String dedupeKey
+    ) {
+        if (title == null || title.isBlank() || title.length() > 200) {
+            throw new IllegalArgumentException("알림 제목은 1자 이상 200자 이하여야 합니다.");
+        }
+        if (body == null || body.isBlank() || body.length() > 1000) {
+            throw new IllegalArgumentException("알림 본문은 1자 이상 1000자 이하여야 합니다.");
+        }
+        if (type == null) {
+            throw new IllegalArgumentException("알림 타입은 필수입니다.");
+        }
+        if (targetId != null && targetId.length() > 255) {
+            throw new IllegalArgumentException("알림 대상 ID는 255자 이하여야 합니다.");
+        }
+        if (dedupeKey != null && dedupeKey.length() > 160) {
+            throw new IllegalArgumentException("알림 중복 방지 키는 160자 이하여야 합니다.");
+        }
     }
 
-    private String defaultBody(NotificationType type) {
-        return switch (type) {
-            case NOTICE -> "테스트 공지사항입니다.";
-            case EXPIRY_SOON -> "테스트 알림입니다. 냉장고 속 식재료의 소비기한이 임박했습니다.";
-            case RECIPE_READY -> "테스트 알림입니다. AI 레시피가 준비되었습니다.";
-        };
-    }
 }

@@ -4,6 +4,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import java.util.Collection;
 import java.util.List;
@@ -40,10 +42,21 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
             "WHERE ui.id = :id AND ui.userId = :userId")
     Optional<UserIngredient> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
-    // 소비기한이 [from, to] 범위에 속하는 식재료를 모두 찾습니다. (D-3 ~ D-day 알림용)
-    @Query("SELECT ui FROM UserIngredient ui LEFT JOIN FETCH ui.ingredient i JOIN AppUser u ON ui.userId = u.id " +
-            "WHERE ui.expiryDate BETWEEN :from AND :to AND u.deletedAt IS NULL")
-    List<UserIngredient> findAllByExpiryDateBetweenAndUserNotDeleted(
+    @Query(value = "SELECT DISTINCT ui.userId FROM UserIngredient ui JOIN AppUser u ON ui.userId = u.id " +
+            "WHERE ui.expiryDate BETWEEN :from AND :to AND u.deletedAt IS NULL ORDER BY ui.userId",
+            countQuery = "SELECT COUNT(DISTINCT ui.userId) FROM UserIngredient ui JOIN AppUser u ON ui.userId = u.id " +
+                    "WHERE ui.expiryDate BETWEEN :from AND :to AND u.deletedAt IS NULL")
+    Page<Long> findExpiringUserIds(
+            @Param("from") LocalDate from,
+            @Param("to") LocalDate to,
+            Pageable pageable
+    );
+
+    @Query("SELECT ui FROM UserIngredient ui LEFT JOIN FETCH ui.ingredient i " +
+            "WHERE ui.userId IN :userIds AND ui.expiryDate BETWEEN :from AND :to " +
+            "ORDER BY ui.userId, ui.expiryDate, ui.id")
+    List<UserIngredient> findExpiringByUserIds(
+            @Param("userIds") Collection<Long> userIds,
             @Param("from") LocalDate from,
             @Param("to") LocalDate to
     );
@@ -66,4 +79,6 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
     @Modifying
     @Query("DELETE FROM UserIngredient ui WHERE ui.id IN :ids AND ui.userId = :userId")
     void deleteAllByIdInAndUserId(@Param("ids") Collection<Long> ids, @Param("userId") Long userId);
+
+    void deleteAllByUserId(Long userId);
 }

@@ -8,7 +8,12 @@ import lombok.NoArgsConstructor;
 import java.time.Instant;
 
 @Entity
-@Table(name = "notification")
+@Table(name = "notification", indexes = {
+        @Index(name = "idx_notification_user_cursor", columnList = "user_id,id"),
+        @Index(name = "idx_notification_user_unread", columnList = "user_id,is_read"),
+        @Index(name = "idx_notification_user_type_unread", columnList = "user_id,notification_type,is_read"),
+        @Index(name = "idx_notification_created_at", columnList = "created_at")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class Notification {
@@ -17,17 +22,17 @@ public class Notification {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false)
+    @Column(name = "user_id", nullable = false)
     private Long userId; // 알림을 받을 유저의 ID
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 200)
     private String title; // 알림 제목
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 1000)
     private String body; // 알림 내용
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @Column(name = "notification_type", nullable = false)
     private NotificationType notificationType; // 알림 종류 (목적지 화면)
 
     @Column
@@ -36,10 +41,10 @@ public class Notification {
     @Column(unique = true, length = 160)
     private String dedupeKey;
 
-    @Column(nullable = false)
+    @Column(name = "is_read", nullable = false)
     private boolean isRead = false; // 읽음 여부
 
-    @Column(nullable = false, columnDefinition = "timestamp with time zone")
+    @Column(name = "created_at", nullable = false, columnDefinition = "timestamp with time zone")
     private Instant createdAt;
 
     @Builder

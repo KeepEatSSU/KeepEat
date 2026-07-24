@@ -6,6 +6,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Index;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -13,7 +14,10 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "oauth_login_code")
+@Table(name = "oauth_login_code", indexes = {
+        @Index(name = "idx_oauth_code_user_id", columnList = "user_id"),
+        @Index(name = "idx_oauth_code_expires_at", columnList = "expires_at")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class OAuthLoginCode {
@@ -25,10 +29,10 @@ public class OAuthLoginCode {
     @Column(nullable = false, unique = true, length = 128)
     private String codeHash;
 
-    @Column(nullable = false)
+    @Column(name = "user_id", nullable = false)
     private Long userId;
 
-    @Column(nullable = false)
+    @Column(name = "expires_at", nullable = false)
     private LocalDateTime expiresAt;
 
     @Column(nullable = false)

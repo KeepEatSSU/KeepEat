@@ -8,7 +8,9 @@ import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "email_auth")
+@Table(name = "email_auth", indexes = {
+        @Index(name = "idx_email_auth_expired_at", columnList = "expired_at")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class EmailAuth {
@@ -17,13 +19,13 @@ public class EmailAuth {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true) // 이메일당 최신 인증번호 1개만 유지
+    @Column(nullable = false, unique = true, length = 320) // 이메일당 최신 인증번호 1개만 유지
     private String email;
 
     @Column(nullable = false)
     private String authCode;
 
-    @Column(nullable = false)
+    @Column(name = "expired_at", nullable = false)
     private LocalDateTime expiredAt; // 만료 시간
 
     @Column(nullable = false)
@@ -31,6 +33,7 @@ public class EmailAuth {
 
     @Column(nullable = false)
     private int failedAttempts = 0;
+
 
     @Builder
     public EmailAuth(String email, String authCode, LocalDateTime expiredAt) {

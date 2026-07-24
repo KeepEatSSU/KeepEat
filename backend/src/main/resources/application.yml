@@ -4,6 +4,17 @@ spring:
   profiles:
     active: local
 
+server:
+  forward-headers-strategy: framework
+
+app:
+  security:
+    admin-cookie-secure: false
+  notification:
+    retention-days: 90
+  push:
+    receipt-check-delay-ms: 60000
+
 openai:
   api-key: ${OPENAI_API_KEY}
   model: gpt-4o

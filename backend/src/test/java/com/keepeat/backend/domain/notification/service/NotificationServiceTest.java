@@ -2,7 +2,6 @@ package com.keepeat.backend.domain.notification.service;
 
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
-import com.keepeat.backend.domain.notification.entity.DeviceToken;
 import com.keepeat.backend.domain.notification.entity.Notification;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
@@ -22,6 +21,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -30,7 +30,6 @@ import static org.mockito.Mockito.verify;
 class NotificationServiceTest {
 
     private static final Long USER_ID = 1L;
-    private static final Long OTHER_USER_ID = 2L;
 
     @InjectMocks
     private NotificationService notificationService;
@@ -42,23 +41,25 @@ class NotificationServiceTest {
     private NotificationRepository notificationRepository;
 
     @Mock
-    private ExpoPushService expoPushService;
+    private PushDispatchService pushDispatchService;
 
     @Mock
     private AppUserRepository appUserRepository;
 
     @Test
-    @DisplayName("registerToken reassigns existing token to current user")
-    void registerToken_existingToken_reassignsOwner() {
+    @DisplayName("registerToken atomically registers or updates the current session")
+    void registerToken_upsertsCurrentSession() {
         AppUser user = new AppUser("user", "user@test.com", "encoded", Role.ROLE_USER);
-        DeviceToken token = new DeviceToken(OTHER_USER_ID, "expo-token");
         given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
-        given(deviceTokenRepository.findByToken("expo-token")).willReturn(Optional.of(token));
 
-        notificationService.registerToken(USER_ID, "expo-token");
+        notificationService.registerToken(USER_ID, "session-id", "expo-token");
 
-        assertThat(token.getUserId()).isEqualTo(USER_ID);
-        verify(deviceTokenRepository, never()).save(any(DeviceToken.class));
+        verify(deviceTokenRepository).upsertToken(
+                eq(USER_ID),
+                eq("session-id"),
+                eq("expo-token"),
+                any(java.time.LocalDateTime.class)
+        );
     }
 
     @Test
@@ -73,27 +74,45 @@ class NotificationServiceTest {
     }
 
     @Test
-    @DisplayName("markAsRead rejects another user's notification")
-    void markAsRead_otherUserNotification_forbidden() {
+    @DisplayName("markAsRead does not reveal another user's notification")
+    void markAsRead_otherUserNotification_notFound() {
         AppUser user = new AppUser("user", "user@test.com", "encoded", Role.ROLE_USER);
-        Notification notification = new Notification(OTHER_USER_ID, "title", "body", NotificationType.NOTICE, null);
         given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
-        given(notificationRepository.findById(10L)).willReturn(Optional.of(notification));
+        given(notificationRepository.findByIdAndUserId(10L, USER_ID)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> notificationService.markAsRead(10L, USER_ID))
                 .isInstanceOfSatisfying(KeepEatException.class, e ->
-                        assertThat(e.getErrorCode()).isEqualTo(ErrorCode.NOTIFICATION_ACCESS_DENIED));
+                        assertThat(e.getErrorCode()).isEqualTo(ErrorCode.NOTIFICATION_NOT_FOUND));
     }
 
     @Test
     @DisplayName("sendNotificationOnce skips duplicated dedupe key")
     void sendNotificationOnce_duplicateKey_skips() {
-        given(notificationRepository.existsByDedupeKey("dedupe")).willReturn(true);
+        AppUser user = new AppUser("user", "user@test.com", "encoded", Role.ROLE_USER);
+        given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(notificationRepository.insertIfAbsent(
+                eq(USER_ID), eq("title"), eq("body"), eq("EXPIRY_SOON"),
+                eq(null), eq("dedupe"), any(java.time.Instant.class)
+        )).willReturn(0);
 
         boolean sent = notificationService.sendNotificationOnce(
                 USER_ID, "title", "body", NotificationType.EXPIRY_SOON, null, "dedupe");
 
         assertThat(sent).isFalse();
+        verify(notificationRepository, never()).saveAndFlush(any(Notification.class));
+        verify(pushDispatchService, never()).dispatch(any(), any(), any(), any(), any());
+    }
+
+    @Test
+    @DisplayName("notification payloads longer than the database limit are rejected")
+    void sendNotification_tooLongTitle_rejected() {
+        AppUser user = new AppUser("user", "user@test.com", "encoded", Role.ROLE_USER);
+        given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        assertThatThrownBy(() -> notificationService.sendNotification(
+                USER_ID, "x".repeat(201), "body", NotificationType.NOTICE, null))
+                .isInstanceOf(IllegalArgumentException.class);
+
         verify(notificationRepository, never()).saveAndFlush(any(Notification.class));
     }
 }

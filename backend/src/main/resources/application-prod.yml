@@ -41,6 +41,9 @@ spring:
       mail:
         smtp:
           auth: true
+          connectiontimeout: 5000
+          timeout: 5000
+          writetimeout: 5000
           starttls:
             enable: true
 
@@ -52,9 +55,12 @@ jwt:
 app:
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI}
-
-firebase:
-  key-path: ${FIREBASE_KEY_PATH:}
+  security:
+    admin-cookie-secure: true
+  notification:
+    retention-days: ${NOTIFICATION_RETENTION_DAYS:90}
+  push:
+    receipt-check-delay-ms: ${PUSH_RECEIPT_CHECK_DELAY_MS:60000}
 
 management:
   endpoints:

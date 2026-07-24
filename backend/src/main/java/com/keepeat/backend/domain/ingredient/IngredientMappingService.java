@@ -171,14 +171,11 @@ public class IngredientMappingService {
                      .call()
                      .entity(IngredientAiResponseDto.class);
          }catch (TransientAiException e){
-             log.warn("AI 일시적 오류, 원인: {}", e.getMessage());
-             throw new KeepEatException(ErrorCode.AI_API_FAILURE);
+             throw new KeepEatException(ErrorCode.AI_API_FAILURE, e);
          }catch (NonTransientAiException e){
-             log.error("AI 영구적 오류 , 원인: {}", e.getMessage(), e);
-             throw new KeepEatException(ErrorCode.AI_API_FAILURE);
+             throw new KeepEatException(ErrorCode.AI_API_FAILURE, e);
          }catch (Exception e){
-             log.error("AI 응답 파싱 실패",  e);
-             throw new KeepEatException(ErrorCode.AI_RESPONSE_PARSE_FAILURE);
+             throw new KeepEatException(ErrorCode.AI_RESPONSE_PARSE_FAILURE, e);
          }
 
         validateAiResponse(responseFromAi);

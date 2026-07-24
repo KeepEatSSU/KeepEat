@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.common.exception;
 
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -19,12 +20,20 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(KeepEatException.class)
-    public ResponseEntity<Map<String, String>> handleKeepEatException(KeepEatException e) {
+    public ResponseEntity<Map<String, String>> handleKeepEatException(KeepEatException e, HttpServletRequest request) {
         ErrorCode code = e.getErrorCode();
+        if (code.getStatus().is5xxServerError()) {
+            log.error("[{}] [{}] {}", code.name(), endpoint(request), code.getMessage(), e);
+        } else {
+            log.warn("[{}] [{}] {}", code.name(), endpoint(request), code.getMessage());
+        }
+
         ResponseEntity.BodyBuilder response = ResponseEntity.status(code.getStatus());
+
         if (code == ErrorCode.RATE_LIMIT_EXCEEDED) {
             response.header("Retry-After", "60");
         }
+
         return response.body(Map.of(
                 "status", "error",
                 "code", code.name(),
@@ -33,7 +42,9 @@ public class GlobalExceptionHandler {
     }
   
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, String>> handleIllegalArgumentException(IllegalArgumentException e) {
+    public ResponseEntity<Map<String, String>> handleIllegalArgumentException(IllegalArgumentException e, HttpServletRequest request) {
+        log.warn("[{}] [{}] {}", "BAD_REQUEST", endpoint(request) ,e.getMessage());
+
         Map<String, String> errorResponse = new HashMap<>();
         errorResponse.put("status", "error");
         errorResponse.put("code", "BAD_REQUEST");
@@ -42,7 +53,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<?> handleMethodArgumentNotValidException(MethodArgumentNotValidException e){
+    public ResponseEntity<?> handleMethodArgumentNotValidException(MethodArgumentNotValidException e, HttpServletRequest request){
+        log.warn("[{}] [{}] {}", "INVALID_INPUT", endpoint(request), e.getMessage());
         Map<String, String> errorResponse = new HashMap<>();
         errorResponse.put("status", "error");
         errorResponse.put("code", "INVALID_INPUT");
@@ -79,10 +91,10 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<?> handleException(Exception e){
+    public ResponseEntity<?> handleException(Exception e, HttpServletRequest request){
         // 클라이언트가 자기 잘못으로 오해하지 않도록 500으로 응답하고,
         // 운영 디버깅을 위해 서버 로그에 전체 stacktrace를 남긴다.
-        log.error("Unhandled exception", e);
+        log.error("[{}] [{}] {}", "INTERNAL_ERROR", endpoint(request), e.getMessage(), e);
         Map<String, String> errorResponse = new HashMap<>();
         errorResponse.put("status", "error");
         errorResponse.put("code", "INTERNAL_ERROR");
@@ -92,6 +104,8 @@ public class GlobalExceptionHandler {
 
     }
 
-
+    private String endpoint(HttpServletRequest request) {
+        return request.getMethod() + " " + request.getRequestURI();
+    }
 
 }

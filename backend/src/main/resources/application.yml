@@ -19,3 +19,10 @@ openai:
   api-key: ${OPENAI_API_KEY}
   model: gpt-4o
   max-tokens: 1024
+
+logging:
+  level:
+    root: INFO
+    com.keepeat.backend: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [userId=%X{userId:-anon}] %logger{36} - %msg%n"

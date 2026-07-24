@@ -37,7 +37,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
 
 
-                        .requestMatchers("/api/users/signup", "/api/users/login","/api/users/refresh", "/api/users/oauth2/exchange", "/error", "/swagger-ui/**", "/v3/api-docs/**", "/actuator/health", "/actuator/health/**").permitAll()
+                        .requestMatchers("/api/users/signup","/api/users/login","/api/users/refresh","/api/users/oauth2/exchange","/error","/swagger-ui/**","/v3/api-docs/**","/actuator/health","/actuator/health/**","/actuator/prometheus").permitAll()
                         .requestMatchers("/admin/login").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/users/send").permitAll()

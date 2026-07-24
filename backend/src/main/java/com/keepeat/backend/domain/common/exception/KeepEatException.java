@@ -11,4 +11,9 @@ public class KeepEatException extends RuntimeException {
         super(errorCode.getMessage());
         this.errorCode = errorCode;
     }
+
+    public KeepEatException(ErrorCode errorCode, Throwable cause){
+        super(errorCode.getMessage(), cause);
+        this.errorCode = errorCode;
+    }
 }

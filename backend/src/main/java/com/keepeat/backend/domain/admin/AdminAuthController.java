@@ -9,6 +9,7 @@ import com.keepeat.backend.domain.user.entity.AppUser;
 import com.keepeat.backend.domain.user.entity.Role;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
 import com.keepeat.backend.domain.user.service.AppUserService;
+import com.keepeat.backend.domain.user.service.EmailNormalizer;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -20,6 +21,11 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.security.core.Authentication;
+import org.springframework.beans.factory.annotation.Value;
+import com.keepeat.backend.domain.security.RequestRateLimiter;
+import jakarta.servlet.http.HttpServletRequest;
+import java.time.Duration;
 
 @Controller
 @RequestMapping("/admin")
@@ -31,6 +37,10 @@ public class AdminAuthController {
 
     private final AppUserService appUserService;
     private final AppUserRepository appUserRepository;
+    private final RequestRateLimiter rateLimiter;
+
+    @Value("${app.security.admin-cookie-secure:false}")
+    private boolean adminCookieSecure;
 
     @GetMapping("/login")
     public String loginForm(Model model) {
@@ -44,19 +54,21 @@ public class AdminAuthController {
     public String login(@Valid @ModelAttribute("form") AdminLoginForm form,
                         BindingResult bindingResult,
                         HttpServletResponse response,
+                        HttpServletRequest request,
                         Model model) {
         if (bindingResult.hasErrors()) {
             return "admin/login";
         }
 
         try {
-            TokenResponse tokens = appUserService.login(new LoginRequest(form.getEmail(), form.getPassword()));
-
-            AppUser user = appUserRepository.findByEmail(form.getEmail())
-                    .orElseThrow(() -> new KeepEatException(ErrorCode.USER_NOT_FOUND));
+            rateLimiter.check(request, "admin-login", EmailNormalizer.normalize(form.getEmail()), 5, Duration.ofMinutes(15));
+            AppUser user = appUserRepository.findByEmailIgnoreCase(EmailNormalizer.normalize(form.getEmail()))
+                    .orElseThrow(() -> new IllegalArgumentException("이메일 또는 비밀번호가 일치하지 않습니다."));
             if (user.getRole() != Role.ROLE_ADMIN) {
-                throw new KeepEatException(ErrorCode.ADMIN_ACCESS_DENIED);
+                throw new IllegalArgumentException("이메일 또는 비밀번호가 일치하지 않습니다.");
             }
+
+            TokenResponse tokens = appUserService.login(new LoginRequest(form.getEmail(), form.getPassword()));
 
             response.addCookie(buildAdminCookie(tokens.getAccessToken(), ACCESS_TOKEN_MAX_AGE_SECONDS));
             return "redirect:/admin/ingredients";
@@ -70,7 +82,11 @@ public class AdminAuthController {
     }
 
     @PostMapping("/logout")
-    public String logout(HttpServletResponse response) {
+    public String logout(Authentication authentication, HttpServletResponse response) {
+        if (authentication != null && authentication.getPrincipal() instanceof Long userId) {
+            String sessionId = authentication.getDetails() instanceof String value ? value : null;
+            appUserService.logout(userId, sessionId, null);
+        }
         response.addCookie(buildAdminCookie("", 0));
         return "redirect:/admin/login";
     }
@@ -78,8 +94,8 @@ public class AdminAuthController {
     private Cookie buildAdminCookie(String value, int maxAgeSeconds) {
         Cookie cookie = new Cookie(ADMIN_TOKEN_COOKIE, value);
         cookie.setHttpOnly(true);
-        cookie.setSecure(false); // 로컬 개발용. 운영 환경에선 true 필요
-        cookie.setPath("/");
+        cookie.setSecure(adminCookieSecure);
+        cookie.setPath("/admin");
         cookie.setMaxAge(maxAgeSeconds);
         cookie.setAttribute("SameSite", "Strict");
         return cookie;

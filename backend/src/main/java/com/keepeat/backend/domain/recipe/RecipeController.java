@@ -3,6 +3,7 @@ package com.keepeat.backend.domain.recipe;
 import com.keepeat.backend.domain.recipe.dto.*;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
 import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -24,22 +25,42 @@ public class RecipeController {
     private final RecipeReactionService recipeReactionService;
 
     @Operation(
-            summary = "AI 레시피 생성",
-            description = "로그인 사용자의 보유 식재료를 기반으로 AI가 5개의 레시피를 생성한다. " +
-                    "Zero Waste 3개(보유 재료만 사용) + Level Up 2개(추가 구매 허용) 구성. " +
-                    "식재료 3개 이상 + 조미료 3개 이상 보유 시에만 호출 가능."
+            summary = "AI 레시피 생성 요청",
+            description = "로그인 사용자의 보유 식재료를 기반으로 AI 레시피 생성을 **백그라운드에서 시작**한다. " +
+                    "요청 즉시 202를 반환하며, 생성이 완료되면 푸시 알림(RECIPE_READY)이 발송된다. " +
+                    "결과는 `/api/v1/recipes/result`로 조회한다. " +
+                    "Zero Waste 3개 + Level Up 2개 구성, 식재료 3개 이상 + 조미료 3개 이상 보유 시에만 호출 가능."
     )
     @ApiResponses({
-            @ApiResponse(responseCode = "200", description = "레시피 5개 생성 성공"),
+            @ApiResponse(responseCode = "202", description = "생성 요청 접수 (백그라운드 처리 시작)"),
             @ApiResponse(responseCode = "400", description = "식재료/조미료 부족 (INSUFFICIENT_INGREDIENTS)"),
-            @ApiResponse(responseCode = "502", description = "Gemini AI 호출 실패 (AI_API_FAILURE)"),
-            @ApiResponse(responseCode = "500", description = "AI 응답 파싱 실패 (AI_RESPONSE_PARSE_FAILURE)")
+            @ApiResponse(responseCode = "409", description = "이미 생성 진행 중 (RECIPE_GENERATING)")
     })
     @PostMapping("/api/v1/recipes/generate")
-    public ResponseEntity<GeneratedRecipesResponseDto> getGeneratedRecipes(
+    public ResponseEntity<Void> getGeneratedRecipes(
             @AuthenticationPrincipal Long userId
     ){
-        GeneratedRecipesResponseDto response = recipeAiService.generateRecipes(userId);
+        recipeAiService.generateRecipes(userId);
+        return ResponseEntity.accepted().build();
+    }
+
+    @Operation(
+            summary = "AI 레시피 생성 결과 조회",
+            description = "백그라운드에서 생성된 레시피 결과를 조회한다. 푸시 알림(RECIPE_READY) 수신 후 호출한다. " +
+                    "생성이 아직 진행 중이면 409, 생성 이력이 없으면 404, 생성에 실패했으면 502/500을 반환한다."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "레시피 5개 조회 성공"),
+            @ApiResponse(responseCode = "409", description = "아직 생성 중 (RECIPE_GENERATING)", content = @Content),
+            @ApiResponse(responseCode = "404", description = "생성 요청 내역 없음 (RECIPE_JOB_NOT_FOUND)", content = @Content),
+            @ApiResponse(responseCode = "502", description = "AI 호출 실패 (AI_API_FAILURE)", content = @Content),
+            @ApiResponse(responseCode = "500", description = "AI 응답 파싱 실패 (AI_RESPONSE_PARSE_FAILURE)", content = @Content)
+    })
+    @GetMapping("/api/v1/recipes/result")
+    public ResponseEntity<GeneratedRecipesResponseDto> getGenerationResult(
+            @AuthenticationPrincipal Long userId
+    ){
+        GeneratedRecipesResponseDto response = recipeAiService.getGenerationResult(userId);
         return ResponseEntity.ok(response);
     }
 

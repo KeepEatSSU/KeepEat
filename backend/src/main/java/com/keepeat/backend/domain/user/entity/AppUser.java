@@ -9,7 +9,9 @@ import org.hibernate.annotations.SQLRestriction;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "app_User")
+@Table(name = "app_User", uniqueConstraints = {
+        @UniqueConstraint(name = "uk_app_user_provider_identity", columnNames = {"provider", "provider_id"})
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @SQLDelete(sql = "UPDATE app_user SET deleted_at = NOW() WHERE id = ?")
@@ -37,16 +39,12 @@ public class AppUser {
     private String refreshToken;
 
     private String provider;    // "google", "kakao" 등
+    @Column(name = "provider_id")
     private String providerId;
 
     // 알람 수신 동의 여부
     @Column(nullable = false)
     private boolean isNotificationEnabled = true; // 기본값은 알림 켜짐(true)
-
-    // 토큰 갱신을 위한 메서드
-    public void updateRefreshToken(String refreshToken) {
-        this.refreshToken = refreshToken;
-    }
 
     // 로그아웃을 위한 메서드
     public void clearRefreshToken() {
@@ -66,7 +64,7 @@ public class AppUser {
     public AppUser(String nickname, String email, String provider, String providerId, Role role) {
         this.nickname = nickname;
         this.email = email;
-        this.password = java.util.UUID.randomUUID().toString();
+        this.password = null;
         this.provider = provider;
         this.providerId = providerId;
         this.role = role;
@@ -75,7 +73,7 @@ public class AppUser {
     // 알림 설정 토글 메서드
     private LocalDateTime deletedAt;
 
-    public void toggleNotification(boolean status) {
+    public void setNotificationEnabled(boolean status) {
         this.isNotificationEnabled = status;
     }
 
@@ -83,8 +81,18 @@ public class AppUser {
         this.password = newPassword;
     }
 
+    public void attachOAuthIdentity(String provider, String providerId) {
+        this.provider = provider;
+        this.providerId = providerId;
+    }
+
     public void markAsDeleted() {
-        this.email = "deleted_" + System.currentTimeMillis() + "_" + this.email;
+        this.email = "deleted_" + java.util.UUID.randomUUID() + "@deleted.invalid";
+        this.nickname = "탈퇴한 사용자";
+        this.password = null;
+        this.provider = "DELETED";
+        this.providerId = null;
         this.refreshToken = null;
+        this.isNotificationEnabled = false;
     }
 }

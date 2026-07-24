@@ -4,7 +4,6 @@ import com.keepeat.backend.domain.notification.dto.DeviceTokenRequest;
 import com.keepeat.backend.domain.notification.dto.NotificationBulkDeleteRequest;
 import com.keepeat.backend.domain.notification.dto.NotificationPageResponse;
 import com.keepeat.backend.domain.notification.dto.NotificationResponse;
-import com.keepeat.backend.domain.notification.dto.NotificationTestRequest;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
 import com.keepeat.backend.domain.notification.service.NotificationService;
 import io.swagger.v3.oas.annotations.Operation;
@@ -13,6 +12,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -30,9 +30,11 @@ public class NotificationController {
     @PostMapping("/token")
     public ResponseEntity<String> registerToken(
             @AuthenticationPrincipal Long userId,
+            Authentication authentication,
             @Valid @RequestBody DeviceTokenRequest request) {
 
-        notificationService.registerToken(userId, request.token());
+        String sessionId = authentication != null && authentication.getDetails() instanceof String value ? value : null;
+        notificationService.registerToken(userId, sessionId, request.token());
         return ResponseEntity.ok("기기 토큰이 성공적으로 등록되었습니다.");
     }
 
@@ -122,20 +124,4 @@ public class NotificationController {
         return ResponseEntity.noContent().build();
     }
 
-    @Operation(summary = "[TEST]",
-            description = " 자기 자신에게 즉시 알림을 발사. " +
-                    "type은 필수(NOTICE / EXPIRY_SOON / RECIPE_READY), title/message는 선택 (없으면 타입별 기본값). ")
-    @PostMapping("/test")
-    public ResponseEntity<Void> sendTestNotification(
-            @AuthenticationPrincipal Long userId,
-            @Valid @RequestBody NotificationTestRequest request) {
-
-        notificationService.sendTestNotification(
-                userId,
-                request.type(),
-                request.title(),
-                request.message()
-        );
-        return ResponseEntity.noContent().build();
-    }
 }

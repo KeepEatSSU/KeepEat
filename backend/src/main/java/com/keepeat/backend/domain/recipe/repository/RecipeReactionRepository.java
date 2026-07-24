@@ -42,4 +42,6 @@ public interface RecipeReactionRepository extends JpaRepository<RecipeReaction, 
     @Modifying
     @Query("DELETE FROM RecipeReaction r WHERE r.recipe.id = :recipeId")
     void deleteAllByRecipeId(@Param("recipeId") Long recipeId);
+
+    void deleteAllByAppUserId(Long userId);
 }

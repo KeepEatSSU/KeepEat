@@ -1,0 +1,35 @@
+# 로컬 모니터링 스택: Prometheus(수집·저장) + Grafana(시각화)
+# 실행:  cd monitoring 후  docker compose up -d
+# 종료:  docker compose down        (데이터까지 지우려면 docker compose down -v)
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: keepeat-prometheus
+    ports:
+      - "9090:9090"                        # 브라우저 접속: http://localhost:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml  # 위에서 만든 설정파일을 컨테이너로 넣어줌
+      - prometheus-data:/prometheus                      # 긁어온 데이터를 저장할 공간
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'   # 그 설정파일을 쓰라고 지정
+      - '--storage.tsdb.retention.time=2d'               # 로컬 연습용이라 2일치만 보관
+    extra_hosts:
+      - "host.docker.internal:host-gateway"              # host.docker.internal 주소가 확실히 동작하게
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: keepeat-grafana
+    ports:
+      - "3000:3000"                        # 브라우저 접속: http://localhost:3000
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin   # 첫 로그인 후 변경 권장
+    volumes:
+      - grafana-data:/var/lib/grafana      # 대시보드 설정 등을 저장
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus-data:
+  grafana-data:

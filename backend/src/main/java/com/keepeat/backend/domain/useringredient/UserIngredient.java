@@ -23,7 +23,10 @@ import com.keepeat.backend.domain.useringredient.dto.UserIngredientRequest;
 import java.time.LocalDate;
 
 @Entity
-@Table(name = "user_ingredient")
+@Table(name = "user_ingredient", indexes = {
+        @jakarta.persistence.Index(name = "idx_user_ingredient_expiry", columnList = "expiry_date"),
+        @jakarta.persistence.Index(name = "idx_user_ingredient_user_expiry", columnList = "user_id,expiry_date")
+})
 @Getter
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class UserIngredient {

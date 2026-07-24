@@ -75,12 +75,12 @@ public class OpenAiClient {
 
             return parseResponse(responseBody);
         } catch (WebClientResponseException e) {
-            throw new KeepEatException(ErrorCode.OCR_API_FAILURE);
+            throw new KeepEatException(ErrorCode.OCR_API_FAILURE, e);
         } catch (Exception e) {
             if (e instanceof KeepEatException) {
                 throw (KeepEatException) e;
             }
-            throw new KeepEatException(ErrorCode.OCR_API_FAILURE);
+            throw new KeepEatException(ErrorCode.OCR_API_FAILURE, e);
         }
     }
 

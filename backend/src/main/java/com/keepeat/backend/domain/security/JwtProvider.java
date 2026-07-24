@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 
 @Component
@@ -21,21 +22,21 @@ public class JwtProvider {
             @Value("${jwt.access-expiration}") long accessTokenValidityTime,
             @Value("${jwt.refresh-expiration}") long refreshTokenValidityTime) {
 
-        byte[] keyBytes = secretKey.getBytes();
+        byte[] keyBytes = secretKey.getBytes(StandardCharsets.UTF_8);
         this.key = Keys.hmacShaKeyFor(keyBytes);
         this.accessTokenValidityTime = accessTokenValidityTime;
         this.refreshTokenValidityTime = refreshTokenValidityTime;
     }
 
-    public String createAccessToken(String email, Long id, Role role) {
-        return createToken(email, id, role, accessTokenValidityTime);
+    public String createAccessToken(String email, Long id, Role role, String sessionId) {
+        return createToken(email, id, role, sessionId, "access", accessTokenValidityTime);
     }
 
-    public String createRefreshToken(String email, Long id, Role role) {
-        return createToken(email, id, role, refreshTokenValidityTime);
+    public String createRefreshToken(String email, Long id, Role role, String sessionId) {
+        return createToken(email, id, role, sessionId, "refresh", refreshTokenValidityTime);
     }
 
-    private String createToken(String email, Long id, Role role, long validityTime) {
+    private String createToken(String email, Long id, Role role, String sessionId, String tokenType, long validityTime) {
         Date now = new Date();
         Date validity = new Date(now.getTime() + validityTime);
 
@@ -43,6 +44,8 @@ public class JwtProvider {
                 .subject(email)
                 .claim("id", id)
                 .claim("role", role.name())
+                .claim("tokenType", tokenType)
+                .claim("sid", sessionId)
                 .issuedAt(now)
                 .expiration(validity)
                 .signWith(key)
@@ -73,12 +76,13 @@ public class JwtProvider {
     }
 
     public Long getId(String token) {
-        return Jwts.parser()
+        Number id = Jwts.parser()
                 .verifyWith(key)
                 .build()
                 .parseSignedClaims(token)
                 .getPayload()
-                .get("id", Long.class); // claim에서 'id'라는 이름으로 넣은 Long 값을 꺼냄
+                .get("id", Number.class);
+        return id.longValue();
     }
 
     // role claim이 없는 구버전 토큰은 ROLE_USER로 폴백 — 기존 발급 토큰 호환
@@ -90,5 +94,37 @@ public class JwtProvider {
                 .getPayload()
                 .get("role", String.class);
         return role != null ? role : Role.ROLE_USER.name();
+    }
+
+    public String getSessionId(String token) {
+        return Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload()
+                .get("sid", String.class);
+    }
+
+    public boolean isAccessToken(String token) {
+        String type = getTokenType(token);
+        return "access".equals(type);
+    }
+
+    public boolean isRefreshToken(String token) {
+        String type = getTokenType(token);
+        return type == null || "refresh".equals(type);
+    }
+
+    public long getRefreshTokenValidityTime() {
+        return refreshTokenValidityTime;
+    }
+
+    private String getTokenType(String token) {
+        return Jwts.parser()
+                .verifyWith(key)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload()
+                .get("tokenType", String.class);
     }
 }

@@ -1,11 +1,15 @@
 package com.keepeat.backend.domain.security;
 
+import com.keepeat.backend.domain.user.entity.AppUser;
+import com.keepeat.backend.domain.user.repository.AppUserRepository;
+import com.keepeat.backend.domain.user.repository.UserSessionRepository;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -13,6 +17,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.util.List;
 
 @RequiredArgsConstructor
@@ -21,24 +26,47 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     private static final String ADMIN_TOKEN_COOKIE = "ADMIN_TOKEN";
 
     private final JwtProvider jwtProvider;
+    private final AppUserRepository appUserRepository;
+    private final UserSessionRepository userSessionRepository;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain filterChain) throws ServletException, IOException {
 
 
         String token = resolveToken(request);
-        if (token != null && jwtProvider.validateToken(token)) {
+        if (token != null && jwtProvider.validateToken(token) && jwtProvider.isAccessToken(token)) {
 
             Long id = jwtProvider.getId(token);
-            String role = jwtProvider.getRole(token);
+            AppUser user = appUserRepository.findById(id).orElse(null);
+            if (user == null) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
+            String sessionId = jwtProvider.getSessionId(token);
+            if (sessionId == null || userSessionRepository.findByIdAndUserId(sessionId, id)
+                    .filter(session -> session.isUsable(Instant.now()))
+                    .isEmpty()) {
+                filterChain.doFilter(request, response);
+                return;
+            }
+
+            String role = user.getRole().name();
+
+            MDC.put("userId", String.valueOf(id));
 
             UsernamePasswordAuthenticationToken authentication =
                     new UsernamePasswordAuthenticationToken(id, null, List.of(new SimpleGrantedAuthority(role)));
+            authentication.setDetails(sessionId);
 
             SecurityContextHolder.getContext().setAuthentication(authentication);
         }
 
-        filterChain.doFilter(request, response);
+        try{
+            filterChain.doFilter(request, response);
+        }finally {
+            MDC.clear();
+        }
     }
 
     private String resolveToken(HttpServletRequest request) {

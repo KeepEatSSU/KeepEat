@@ -29,9 +29,18 @@ public enum ErrorCode {
     AI_RESPONSE_PARSE_FAILURE(HttpStatus.INTERNAL_SERVER_ERROR, "AI 응답을 처리하는 중 오류가 발생했습니다."),
     RECIPE_NOT_BOOKMARKED(HttpStatus.FORBIDDEN, "내 레시피에 등록되지 않은 레시피 입니다."),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "잘못된 커서 형식입니다."),
+    RECIPE_GENERATING(HttpStatus.CONFLICT, "레시피 생성 중에는 레시피 생성 요청을 할 수 없습니다."),
+    RECIPE_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "진행 중이거나 완료된 레시피 생성 작업이 없습니다."),
 
     // 유저
     USER_NOT_FOUND(HttpStatus.NOT_FOUND, "해당 유저를 찾을 수 없습니다."),
+    INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "이메일 또는 비밀번호가 일치하지 않습니다."),
+    INVALID_TOKEN(HttpStatus.UNAUTHORIZED, "유효하지 않거나 만료된 토큰입니다."),
+    OAUTH_ACCOUNT_CONFLICT(HttpStatus.CONFLICT, "동일한 이메일로 가입된 다른 로그인 방식의 계정이 있습니다."),
+    RATE_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "요청이 너무 많습니다. 잠시 후 다시 시도해 주세요."),
+
+    // 알림
+    NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "알림을 찾을 수 없습니다."),
 
     // 어드민
     ADMIN_ACCESS_DENIED(HttpStatus.FORBIDDEN, "어드민 권한이 필요합니다."),

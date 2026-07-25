@@ -5,6 +5,9 @@ spring:
     default: local
 
   datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5433}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
 
   jpa:
@@ -51,9 +54,11 @@ app:
   security:
     admin-cookie-secure: false
   notification:
-    retention-days: 90
+    retention-days: ${NOTIFICATION_RETENTION_DAYS:90}
   push:
-    receipt-check-delay-ms: 60000
+    receipt-check-delay-ms: ${PUSH_RECEIPT_CHECK_DELAY_MS:60000}
+  oauth2:
+    redirect-uri: ${OAUTH2_REDIRECT_URI}
 
 openai:
   api-key: ${OPENAI_API_KEY}
@@ -67,15 +72,10 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] [userId=%X{userId:-anon}] %logger{36} - %msg%n"
 
-
 jwt:
   secret: ${JWT_SECRET_KEY}
   access-expiration: 3600000
   refresh-expiration: 1209600000
-
-app:
-  oauth2:
-    redirect-uri: ${OAUTH2_REDIRECT_URI}
 
 firebase:
   key-path: ${FIREBASE_KEY_PATH:}

@@ -1,8 +1,6 @@
 spring:
   datasource:
-    url: jdbc:postgresql://${DEMO_DB_HOST}:${DEMO_DB_PORT:5432}/${DEMO_DB_NAME:postgres}?sslmode=require
-    username: ${DEMO_DB_USER}
-    password: ${DEMO_DB_PASSWORD}
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT:5432}/${DB_NAME:postgres}?sslmode=require
 
   jpa:
     hibernate:

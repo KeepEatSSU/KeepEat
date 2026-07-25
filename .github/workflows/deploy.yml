@@ -94,11 +94,11 @@ jobs:
       - name: Write .env on EC2 and restart container
         uses: appleboy/ssh-action@v1.0.3
         env:
-          PROD_DB_HOST: ${{ secrets.PROD_DB_HOST }}
-          PROD_DB_PORT: ${{ secrets.PROD_DB_PORT }}
+          DB_HOST: ${{ secrets.PROD_DB_HOST }}
+          DB_PORT: ${{ secrets.PROD_DB_PORT }}
           DB_NAME: ${{ secrets.PROD_DB_NAME }}
-          PROD_DB_USER: ${{ secrets.PROD_DB_USER }}
-          PROD_DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
+          DB_USER: ${{ secrets.PROD_DB_USER }}
+          DB_PASSWORD: ${{ secrets.PROD_DB_PASSWORD }}
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
@@ -111,18 +111,18 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          envs: PROD_DB_HOST,PROD_DB_PORT,DB_NAME,PROD_DB_USER,PROD_DB_PASSWORD,OPENAI_API_KEY,GEMINI_API_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,JWT_SECRET_KEY,MAIL_USERNAME,MAIL_PASSWORD,OAUTH2_REDIRECT_URI
+          envs: DB_HOST,DB_PORT,DB_NAME,DB_USER,DB_PASSWORD,OPENAI_API_KEY,GEMINI_API_KEY,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET,JWT_SECRET_KEY,MAIL_USERNAME,MAIL_PASSWORD,OAUTH2_REDIRECT_URI
           script: |
             set -e
             cd /home/ubuntu/app
 
             umask 077
             cat > .env <<ENVEOF
-            PROD_DB_HOST=${PROD_DB_HOST}
-            PROD_DB_PORT=${PROD_DB_PORT}
+            DB_HOST=${DB_HOST}
+            DB_PORT=${DB_PORT}
             DB_NAME=${DB_NAME}
-            PROD_DB_USER=${PROD_DB_USER}
-            PROD_DB_PASSWORD=${PROD_DB_PASSWORD}
+            DB_USER=${DB_USER}
+            DB_PASSWORD=${DB_PASSWORD}
             OPENAI_API_KEY=${OPENAI_API_KEY}
             GEMINI_API_KEY=${GEMINI_API_KEY}
             GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}

@@ -1,4 +1,4 @@
-package com.keepeat.backend.domain.recipe;
+package com.keepeat.backend.domain.recipe.service;
 
 import com.keepeat.backend.domain.common.enums.ReactionType;
 import com.keepeat.backend.domain.common.exception.ErrorCode;

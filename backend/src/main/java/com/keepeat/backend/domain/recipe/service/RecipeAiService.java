@@ -1,4 +1,4 @@
-package com.keepeat.backend.domain.recipe;
+package com.keepeat.backend.domain.recipe.service;
 import com.keepeat.backend.domain.common.enums.RecipeGenerationJobStatus;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;

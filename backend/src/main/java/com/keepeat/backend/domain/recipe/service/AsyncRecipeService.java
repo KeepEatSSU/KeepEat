@@ -1,4 +1,4 @@
-package com.keepeat.backend.domain.recipe;
+package com.keepeat.backend.domain.recipe.service;
 
 import org.slf4j.MDC;
 import tools.jackson.databind.ObjectMapper;
@@ -6,7 +6,6 @@ import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
 import com.keepeat.backend.domain.notification.service.NotificationService;
 import com.keepeat.backend.domain.recipe.dto.GeneratedRecipesResponseDto;
-import com.keepeat.backend.domain.recipe.entity.RecipeGenerationJob;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationJobRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;

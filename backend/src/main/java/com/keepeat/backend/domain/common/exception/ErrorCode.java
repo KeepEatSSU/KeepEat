@@ -30,6 +30,7 @@ public enum ErrorCode {
     RECIPE_NOT_BOOKMARKED(HttpStatus.FORBIDDEN, "내 레시피에 등록되지 않은 레시피 입니다."),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "잘못된 커서 형식입니다."),
     RECIPE_GENERATING(HttpStatus.CONFLICT, "레시피 생성 중에는 레시피 생성 요청을 할 수 없습니다."),
+    RECIPE_DAILY_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "AI 레시피 생성은 하루에 한 번만 가능합니다."),
     RECIPE_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "진행 중이거나 완료된 레시피 생성 작업이 없습니다."),
 
     // 유저

@@ -62,14 +62,4 @@ public class RecipeGenerationJob {
         this.errorCode = errorCode;
         this.updatedAt = LocalDate.now();
     }
-
-    public void setPendingStatus(){
-        this.status = RecipeGenerationJobStatus.PENDING;
-        this.resultJson = null;
-        this.errorCode = null;
-        this.errorMessage = null;
-        this.updatedAt = LocalDate.now();
-
-    }
-
 }

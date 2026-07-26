@@ -1,5 +1,4 @@
 package com.keepeat.backend.domain.recipe.service;
-import com.keepeat.backend.domain.common.enums.RecipeGenerationJobStatus;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.recipe.dto.GeneratedRecipesResponseDto;
@@ -10,7 +9,7 @@ import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
@@ -26,9 +25,18 @@ public class RecipeAiService {
     private final AsyncRecipeService asyncRecipeService;
     private final RecipeGenerationJobRepository recipeGenerationJobRepository;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
+
     public void generateRecipes(Long userId) {
+
+        String userPrompt = transactionTemplate.execute(status -> prepareGeneration(userId));
+
+        asyncRecipeService.processGeneration(userId, userPrompt);
+    }
+
+
+    private String prepareGeneration(Long userId){
 
         List<String> userCondiment = new ArrayList<>();
         List<UserIngredient> userIngredients = userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId);
@@ -74,15 +82,11 @@ public class RecipeAiService {
             throw new KeepEatException(ErrorCode.INSUFFICIENT_INGREDIENTS);
         }
 
-        //
-        RecipeGenerationJob job = recipeGenerationJobRepository.findByUserId(userId).orElse(null);
-        if (job == null) {
-            recipeGenerationJobRepository.save(RecipeGenerationJob.create(userId));
-        } else if (job.getStatus() == RecipeGenerationJobStatus.PENDING) {
+        int affectRows = recipeGenerationJobRepository.tryStartGeneration(userId, LocalDate.now());
+        if(affectRows == 0){
             throw new KeepEatException(ErrorCode.RECIPE_GENERATING);
-        } else {
-            job.setPendingStatus();
-        }
+        }    
+
 
         String userPrompt = """        
                         보유 식재료
@@ -92,9 +96,7 @@ public class RecipeAiService {
                         %s
                         """.formatted(ingredientList.toString(), userCondiment.toString());
 
-
-
-        asyncRecipeService.processGeneration(userId, userPrompt);
+        return userPrompt;
     }
 
     private Long calculateDaysLeft(LocalDate expiryDate) {

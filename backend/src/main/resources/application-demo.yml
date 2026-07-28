@@ -6,8 +6,16 @@ spring:
     hibernate:
       ddl-auto: update
 
+server:
+  # Demo terminates TLS in Spring directly, so forwarded client-IP headers must not be trusted.
+  forward-headers-strategy: none
+
 app:
   security:
     swagger:
       username: ${SWAGGER_USERNAME}
       password: ${SWAGGER_PASSWORD}
+      rate-limit:
+        max-failures: ${SWAGGER_AUTH_MAX_FAILURES:5}
+        observation-window: ${SWAGGER_AUTH_OBSERVATION_WINDOW:15m}
+        block-duration: ${SWAGGER_AUTH_BLOCK_DURATION:15m}

@@ -5,3 +5,9 @@ spring:
   jpa:
     hibernate:
       ddl-auto: update
+
+app:
+  security:
+    swagger:
+      username: ${SWAGGER_USERNAME}
+      password: ${SWAGGER_PASSWORD}

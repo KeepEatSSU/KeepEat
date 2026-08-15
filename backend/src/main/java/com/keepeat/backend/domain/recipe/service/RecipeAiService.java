@@ -1,19 +1,20 @@
-package com.keepeat.backend.domain.recipe;
-import com.keepeat.backend.domain.common.enums.RecipeGenerationJobStatus;
+package com.keepeat.backend.domain.recipe.service;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.recipe.dto.GeneratedRecipesResponseDto;
 import com.keepeat.backend.domain.recipe.entity.RecipeGenerationJob;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationJobRepository;
+import com.keepeat.backend.domain.recipe.repository.RecipeGenerationUsageRepository;
 import com.keepeat.backend.domain.useringredient.UserIngredient;
 import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.*;
 
@@ -21,14 +22,24 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class RecipeAiService {
-
     private final UserIngredientRepository userIngredientRepository;
     private final AsyncRecipeService asyncRecipeService;
     private final RecipeGenerationJobRepository recipeGenerationJobRepository;
+    private final RecipeGenerationUsageRepository recipeGenerationUsageRepository;
     private final ObjectMapper objectMapper;
+    private final TransactionTemplate transactionTemplate;
 
-    @Transactional
+
     public void generateRecipes(Long userId) {
+        LocalDate usageDate = LocalDate.now(ZoneId.of("Asia/Seoul"));
+
+        String userPrompt = transactionTemplate.execute(status -> prepareGeneration(userId, usageDate));
+
+        asyncRecipeService.processGeneration(userId, userPrompt, usageDate);
+    }
+
+
+    private String prepareGeneration(Long userId, LocalDate usageDate){
 
         List<String> userCondiment = new ArrayList<>();
         List<UserIngredient> userIngredients = userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId);
@@ -74,14 +85,14 @@ public class RecipeAiService {
             throw new KeepEatException(ErrorCode.INSUFFICIENT_INGREDIENTS);
         }
 
-        //
-        RecipeGenerationJob job = recipeGenerationJobRepository.findByUserId(userId).orElse(null);
-        if (job == null) {
-            recipeGenerationJobRepository.save(RecipeGenerationJob.create(userId));
-        } else if (job.getStatus() == RecipeGenerationJobStatus.PENDING) {
+        int affectedRows = recipeGenerationJobRepository.tryStartGeneration(userId, usageDate);
+        if(affectedRows == 0){
             throw new KeepEatException(ErrorCode.RECIPE_GENERATING);
-        } else {
-            job.setPendingStatus();
+        }
+
+        boolean alreadyGenerated = recipeGenerationUsageRepository.existsByUserIdAndUsageDate(userId, usageDate);
+        if (alreadyGenerated) {
+            throw new KeepEatException(ErrorCode.RECIPE_DAILY_LIMIT_EXCEEDED);
         }
 
         String userPrompt = """        
@@ -92,9 +103,7 @@ public class RecipeAiService {
                         %s
                         """.formatted(ingredientList.toString(), userCondiment.toString());
 
-
-
-        asyncRecipeService.processGeneration(userId, userPrompt);
+        return userPrompt;
     }
 
     private Long calculateDaysLeft(LocalDate expiryDate) {

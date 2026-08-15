@@ -29,7 +29,8 @@ public enum ErrorCode {
     AI_RESPONSE_PARSE_FAILURE(HttpStatus.INTERNAL_SERVER_ERROR, "AI 응답을 처리하는 중 오류가 발생했습니다."),
     RECIPE_NOT_BOOKMARKED(HttpStatus.FORBIDDEN, "내 레시피에 등록되지 않은 레시피 입니다."),
     INVALID_CURSOR(HttpStatus.BAD_REQUEST, "잘못된 커서 형식입니다."),
-    RECIPE_GENERATING(HttpStatus.CONFLICT, "레시피 생성 중에는 레시피 생성 요청을 할 수 없습니다."),
+    RECIPE_GENERATING(HttpStatus.CONFLICT, "레시피를 생성 중입니다. 잠시 후 다시 확인해주세요."),
+    RECIPE_DAILY_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "AI 레시피 생성은 하루에 한 번만 가능합니다."),
     RECIPE_JOB_NOT_FOUND(HttpStatus.NOT_FOUND, "진행 중이거나 완료된 레시피 생성 작업이 없습니다."),
 
     // 유저

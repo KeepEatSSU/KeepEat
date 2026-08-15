@@ -1,5 +1,6 @@
-package com.keepeat.backend.domain.recipe;
+package com.keepeat.backend.domain.recipe.service;
 
+import com.keepeat.backend.domain.common.exception.KeepEatException;
 import org.slf4j.MDC;
 import tools.jackson.databind.ObjectMapper;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
@@ -7,7 +8,9 @@ import com.keepeat.backend.domain.notification.entity.NotificationType;
 import com.keepeat.backend.domain.notification.service.NotificationService;
 import com.keepeat.backend.domain.recipe.dto.GeneratedRecipesResponseDto;
 import com.keepeat.backend.domain.recipe.entity.RecipeGenerationJob;
+import com.keepeat.backend.domain.recipe.entity.RecipeGenerationUsage;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationJobRepository;
+import com.keepeat.backend.domain.recipe.repository.RecipeGenerationUsageRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
@@ -17,12 +20,15 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.time.LocalDate;
+
 @Service
 @Slf4j
 public class AsyncRecipeService {
 
     private final ChatClient chatClient;
     private final RecipeGenerationJobRepository recipeGenerationJobRepository;
+    private final RecipeGenerationUsageRepository recipeGenerationUsageRepository;
     private final NotificationService notificationService;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate transactionTemplate;
@@ -30,11 +36,13 @@ public class AsyncRecipeService {
     public AsyncRecipeService(
             ChatClient.Builder chatClientBuilder,
             RecipeGenerationJobRepository recipeGenerationJobRepository,
+            RecipeGenerationUsageRepository recipeGenerationUsageRepository,
             NotificationService notificationService,
             ObjectMapper objectMapper,
             TransactionTemplate transactionTemplate
     ) {
         this.recipeGenerationJobRepository = recipeGenerationJobRepository;
+        this.recipeGenerationUsageRepository = recipeGenerationUsageRepository;
         this.notificationService = notificationService;
         this.objectMapper = objectMapper;
         this.transactionTemplate = transactionTemplate;
@@ -73,7 +81,7 @@ public class AsyncRecipeService {
     }
 
     @Async("recipeAiExecutor")
-    public void processGeneration(Long userId, String userPrompt) {
+    public void processGeneration(Long userId, String userPrompt, LocalDate usageDate) {
         MDC.put("userId", String.valueOf(userId));
         try{
             GeneratedRecipesResponseDto responseFromAi;
@@ -102,10 +110,15 @@ public class AsyncRecipeService {
 
             try {
                 String resultJson = objectMapper.writeValueAsString(responseFromAi);
-                transactionTemplate.executeWithoutResult(status ->
-                        recipeGenerationJobRepository.findByUserId(userId)
-                                .ifPresent(job -> job.done(resultJson))
-                );
+                transactionTemplate.executeWithoutResult(status -> {
+                    RecipeGenerationJob job = recipeGenerationJobRepository.findByUserId(userId)
+                            .orElseThrow(() -> new KeepEatException(ErrorCode.RECIPE_JOB_NOT_FOUND));
+
+                    job.done(resultJson);
+                    recipeGenerationUsageRepository.save(
+                            new RecipeGenerationUsage(userId, usageDate)
+                    );
+                });
             } catch (Exception e) {
                 log.error("[{}] 결과 직렬화/저장 실패", ErrorCode.AI_RESPONSE_PARSE_FAILURE.name(), e);
                 updateFailed(userId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, e.getMessage());

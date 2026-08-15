@@ -1,6 +1,9 @@
 package com.keepeat.backend.domain.recipe;
 
 import com.keepeat.backend.domain.recipe.dto.*;
+import com.keepeat.backend.domain.recipe.service.RecipeAiService;
+import com.keepeat.backend.domain.recipe.service.RecipeReactionService;
+import com.keepeat.backend.domain.recipe.service.RecipeService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.media.Content;

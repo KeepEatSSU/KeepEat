@@ -47,6 +47,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Long
 
     Optional<Notification> findByIdAndUserId(Long id, Long userId);
 
+    @Query("SELECT n.id FROM Notification n WHERE n.dedupeKey = :dedupeKey")
+    Optional<Long> findIdByDedupeKey(@Param("dedupeKey") String dedupeKey);
+
     @Query("SELECT n FROM Notification n WHERE n.userId = :userId AND (:cursor IS NULL OR n.id < :cursor) ORDER BY n.id DESC")
     List<Notification> findNotificationsByCursor(
             @Param("userId") Long userId,

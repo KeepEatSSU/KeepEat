@@ -72,7 +72,12 @@ public class NotificationService {
         }
 
         if (user.isNotificationEnabled()) {
-            sendPushAfterCommit(userId, title, body, type, targetId);
+            Long notificationId = notificationRepository.findIdByDedupeKey(dedupeKey).orElse(null);
+            if (notificationId == null) {
+                log.warn("저장된 알림 ID를 찾지 못해 푸시를 생략합니다. dedupeKey={}", dedupeKey);
+            } else {
+                sendPushAfterCommit(userId, title, body, type, notificationId);
+            }
         } else {
             log.info("유저 {}는 알림을 끈 상태입니다. 히스토리만 저장하고 푸시 알림은 생략합니다.", userId);
         }
@@ -169,25 +174,25 @@ public class NotificationService {
             return;
         }
 
-        sendPushAfterCommit(userId, title, body, type, targetId);
+        sendPushAfterCommit(userId, title, body, type, notification.getId());
     }
 
-    private void sendPushAfterCommit(Long userId, String title, String body, NotificationType type, String targetId) {
+    private void sendPushAfterCommit(Long userId, String title, String body, NotificationType type, Long notificationId) {
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            sendPush(userId, title, body, type, targetId);
+            sendPush(userId, title, body, type, notificationId);
             return;
         }
 
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                pushDispatchService.dispatch(userId, title, body, type, targetId);
+                pushDispatchService.dispatch(userId, title, body, type, notificationId);
             }
         });
     }
 
-    private void sendPush(Long userId, String title, String body, NotificationType type, String targetId) {
-        pushDispatchService.dispatch(userId, title, body, type, targetId);
+    private void sendPush(Long userId, String title, String body, NotificationType type, Long notificationId) {
+        pushDispatchService.dispatch(userId, title, body, type, notificationId);
     }
 
     private AppUser requireActiveUser(Long userId) {

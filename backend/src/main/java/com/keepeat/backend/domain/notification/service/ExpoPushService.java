@@ -153,10 +153,12 @@ public class ExpoPushService {
         pendingReceipts.put(id, new PendingReceipt(pending.request(), attempts, now.plusSeconds(60)));
     }
 
-    private Map<String, Object> buildPushBody(PushSendRequest request) {
-        Map<String, String> data = new HashMap<>();
+    Map<String, Object> buildPushBody(PushSendRequest request) {
+        Map<String, Object> data = new HashMap<>();
         data.put("type", request.type().name());
-        data.put("targetId", request.targetId() == null ? "" : request.targetId());
+        if (request.notificationId() != null) {
+            data.put("notificationId", request.notificationId());
+        }
 
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("to", request.targetToken());

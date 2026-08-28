@@ -7,6 +7,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.time.LocalDate;
 
 @Entity
@@ -41,6 +42,14 @@ public class RecipeGenerationJob {
     @Column
     private LocalDate updatedAt;
 
+    // PENDING 클레임 시각. NULL(과거 스키마의 행 포함)은 stale로 취급되어 탈환 가능하다.
+    @Column
+    private Instant startedAt;
+
+    // 생성 시도 식별자. 상태 전이는 이 값이 일치하는 시도만 수행할 수 있다.
+    @Column(length = 36)
+    private String attemptId;
+
 
     public static RecipeGenerationJob create(Long userId){
         RecipeGenerationJob job = new RecipeGenerationJob();
@@ -48,18 +57,5 @@ public class RecipeGenerationJob {
         job.status = RecipeGenerationJobStatus.PENDING;
         job.createdAt = LocalDate.now();
         return job;
-    }
-
-    public void done(String resultJson){
-        this.status = RecipeGenerationJobStatus.DONE;
-        this.resultJson = resultJson;
-        this.updatedAt = LocalDate.now();
-    }
-
-    public void failed(ErrorCode errorCode,String errorMessage){
-        this.status = RecipeGenerationJobStatus.FAILED;
-        this.errorMessage = errorMessage;
-        this.errorCode = errorCode;
-        this.updatedAt = LocalDate.now();
     }
 }

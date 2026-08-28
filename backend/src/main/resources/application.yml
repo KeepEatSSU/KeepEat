@@ -22,6 +22,14 @@ spring:
     google:
       genai:
         api-key: ${GEMINI_API_KEY}
+    # transient 오류 내부 재시도: 최초 1회 + 재시도 2회.
+    # 기본값(10회, 백오프 최대 3분)은 프론트 polling deadline(2분)과 stale 판정(10분)을 넘길 수 있어 캡핑한다.
+    retry:
+      max-attempts: 3
+      backoff:
+        initial-interval: 2s
+        multiplier: 2
+        max-interval: 10s
 
   security:
     oauth2:

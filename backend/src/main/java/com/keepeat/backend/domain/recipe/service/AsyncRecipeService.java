@@ -1,13 +1,11 @@
 package com.keepeat.backend.domain.recipe.service;
 
-import com.keepeat.backend.domain.common.exception.KeepEatException;
 import org.slf4j.MDC;
 import tools.jackson.databind.ObjectMapper;
 import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
 import com.keepeat.backend.domain.notification.service.NotificationService;
 import com.keepeat.backend.domain.recipe.dto.GeneratedRecipesResponseDto;
-import com.keepeat.backend.domain.recipe.entity.RecipeGenerationJob;
 import com.keepeat.backend.domain.recipe.entity.RecipeGenerationUsage;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationJobRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationUsageRepository;
@@ -81,7 +79,7 @@ public class AsyncRecipeService {
     }
 
     @Async("recipeAiExecutor")
-    public void processGeneration(Long userId, String userPrompt, LocalDate usageDate) {
+    public void processGeneration(Long userId, String userPrompt, LocalDate usageDate, String attemptId) {
         MDC.put("userId", String.valueOf(userId));
         try{
             GeneratedRecipesResponseDto responseFromAi;
@@ -92,36 +90,46 @@ public class AsyncRecipeService {
                         .entity(GeneratedRecipesResponseDto.class);
             } catch (TransientAiException | NonTransientAiException e) {
                 log.error("[{}] AI 호출 실패", ErrorCode.AI_API_FAILURE.name(), e);
-                updateFailed(userId, ErrorCode.AI_API_FAILURE, e.getMessage());
+                updateFailed(userId, attemptId, ErrorCode.AI_API_FAILURE, e.getMessage());
                 return;
             } catch (Exception e) {
                 log.error("[{}] 레시피 생성 처리 실패", ErrorCode.AI_RESPONSE_PARSE_FAILURE.name(), e);
-                updateFailed(userId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, e.getMessage());
+                updateFailed(userId, attemptId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, e.getMessage());
                 return;
             }
 
 
             if (responseFromAi == null || responseFromAi.recipes() == null || responseFromAi.recipes().isEmpty()) {
                 log.error("[{}] AI 응답이 비어있음", ErrorCode.AI_RESPONSE_PARSE_FAILURE.name());
-                updateFailed(userId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, "AI 응답이 비어있음");
+                updateFailed(userId, attemptId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, "AI 응답이 비어있음");
                 return;
             }
 
 
+            boolean completed;
             try {
                 String resultJson = objectMapper.writeValueAsString(responseFromAi);
-                transactionTemplate.executeWithoutResult(status -> {
-                    RecipeGenerationJob job = recipeGenerationJobRepository.findByUserId(userId)
-                            .orElseThrow(() -> new KeepEatException(ErrorCode.RECIPE_JOB_NOT_FOUND));
-
-                    job.done(resultJson);
+                completed = Boolean.TRUE.equals(transactionTemplate.execute(status -> {
+                    int updated = recipeGenerationJobRepository.completeIfCurrentAttempt(
+                            userId, attemptId, resultJson, LocalDate.now(RecipeAiService.KST));
+                    if (updated == 0) {
+                        return false;
+                    }
+                    // 사용량은 완료가 확정된 시도만, 같은 트랜잭션에서 기록한다 (하루 1회 = 성공 기준)
                     recipeGenerationUsageRepository.save(
                             new RecipeGenerationUsage(userId, usageDate)
                     );
-                });
+                    return true;
+                }));
             } catch (Exception e) {
                 log.error("[{}] 결과 직렬화/저장 실패", ErrorCode.AI_RESPONSE_PARSE_FAILURE.name(), e);
-                updateFailed(userId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, e.getMessage());
+                updateFailed(userId, attemptId, ErrorCode.AI_RESPONSE_PARSE_FAILURE, e.getMessage());
+                return;
+            }
+
+            if (!completed) {
+                // stale 판정으로 다른 시도가 job을 탈환한 경우 - 이 결과는 폐기한다
+                log.warn("job이 다른 생성 시도에 탈환되어 결과를 폐기함 (attemptId={})", attemptId);
                 return;
             }
 
@@ -137,10 +145,10 @@ public class AsyncRecipeService {
         }
     }
 
-    private void updateFailed(Long userId, ErrorCode code, String message) {
+    private void updateFailed(Long userId, String attemptId, ErrorCode code, String message) {
         transactionTemplate.executeWithoutResult(status ->
-                recipeGenerationJobRepository.findByUserId(userId)
-                        .ifPresent(job -> job.failed(code, message))
+                recipeGenerationJobRepository.failIfCurrentAttempt(
+                        userId, attemptId, code.name(), message, LocalDate.now(RecipeAiService.KST))
         );
     }
 }

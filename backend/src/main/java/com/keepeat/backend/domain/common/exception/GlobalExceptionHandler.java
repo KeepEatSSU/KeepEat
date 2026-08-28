@@ -19,6 +19,20 @@ import java.util.Map;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<Map<String, String>> handleRateLimitExceededException(RateLimitExceededException e, HttpServletRequest request) {
+        ErrorCode code = e.getErrorCode();
+        log.warn("[{}] [{}] {}", code.name(), endpoint(request), code.getMessage());
+
+        return ResponseEntity.status(code.getStatus())
+                .header("Retry-After", String.valueOf(e.getRetryAfterSeconds()))
+                .body(Map.of(
+                        "status", "error",
+                        "code", code.name(),
+                        "message", code.getMessage()
+                ));
+    }
+
     @ExceptionHandler(KeepEatException.class)
     public ResponseEntity<Map<String, String>> handleKeepEatException(KeepEatException e, HttpServletRequest request) {
         ErrorCode code = e.getErrorCode();

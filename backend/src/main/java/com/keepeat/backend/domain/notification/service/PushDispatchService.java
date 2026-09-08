@@ -20,11 +20,11 @@ public class PushDispatchService {
     private final ExpoPushService expoPushService;
 
     @Async("pushExecutor")
-    public void dispatch(Long userId, String title, String body, NotificationType type, String targetId) {
+    public void dispatch(Long userId, String title, String body, NotificationType type, Long notificationId) {
         List<DeviceToken> tokens = deviceTokenRepository.findAllByUserId(userId);
         for (DeviceToken token : tokens) {
             try {
-                expoPushService.sendMessage(new PushSendRequest(token.getToken(), title, body, type, targetId));
+                expoPushService.sendMessage(new PushSendRequest(token.getToken(), title, body, type, notificationId));
             } catch (Exception e) {
                 log.warn("푸시 비동기 처리 실패: userId={}, cause={}", userId, e.getClass().getSimpleName());
             }

@@ -9,10 +9,13 @@ import com.keepeat.backend.domain.useringredient.UserIngredient;
 import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
@@ -22,6 +25,14 @@ import java.util.*;
 @Service
 @RequiredArgsConstructor
 public class RecipeAiService {
+
+    // 프론트 polling deadline(2분)보다 충분히 보수적인 값.
+    // 이보다 오래 PENDING인 job은 죽은 시도로 보고 재생성 요청 시 탈환을 허용한다.
+    static final Duration STALE_PENDING_TIMEOUT = Duration.ofMinutes(10);
+
+    // 일자 컬럼(usage_date, created_at, updated_at)은 모두 KST 달력을 기준으로 기록한다
+    static final ZoneId KST = ZoneId.of("Asia/Seoul");
+
     private final UserIngredientRepository userIngredientRepository;
     private final AsyncRecipeService asyncRecipeService;
     private final RecipeGenerationJobRepository recipeGenerationJobRepository;
@@ -31,15 +42,26 @@ public class RecipeAiService {
 
 
     public void generateRecipes(Long userId) {
-        LocalDate usageDate = LocalDate.now(ZoneId.of("Asia/Seoul"));
+        LocalDate usageDate = LocalDate.now(KST);
+        String attemptId = UUID.randomUUID().toString();
 
-        String userPrompt = transactionTemplate.execute(status -> prepareGeneration(userId, usageDate));
+        String userPrompt = transactionTemplate.execute(status -> prepareGeneration(userId, usageDate, attemptId));
 
-        asyncRecipeService.processGeneration(userId, userPrompt, usageDate);
+        try {
+            asyncRecipeService.processGeneration(userId, userPrompt, usageDate, attemptId);
+        } catch (TaskRejectedException e) {
+            // 실행 큐 포화로 비동기 제출 자체가 실패하면 job을 PENDING으로 남기지 않는다.
+            transactionTemplate.executeWithoutResult(status ->
+                    recipeGenerationJobRepository.failIfCurrentAttempt(
+                            userId, attemptId, ErrorCode.AI_API_FAILURE.name(),
+                            "레시피 생성 작업 큐가 가득 차 실행하지 못했습니다.", LocalDate.now(KST))
+            );
+            throw new KeepEatException(ErrorCode.AI_API_FAILURE, e);
+        }
     }
 
 
-    private String prepareGeneration(Long userId, LocalDate usageDate){
+    private String prepareGeneration(Long userId, LocalDate usageDate, String attemptId){
 
         List<String> userCondiment = new ArrayList<>();
         List<UserIngredient> userIngredients = userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId);
@@ -85,7 +107,9 @@ public class RecipeAiService {
             throw new KeepEatException(ErrorCode.INSUFFICIENT_INGREDIENTS);
         }
 
-        int affectedRows = recipeGenerationJobRepository.tryStartGeneration(userId, usageDate);
+        Instant now = Instant.now();
+        int affectedRows = recipeGenerationJobRepository.tryStartGeneration(
+                userId, usageDate, attemptId, now, now.minus(STALE_PENDING_TIMEOUT));
         if(affectedRows == 0){
             throw new KeepEatException(ErrorCode.RECIPE_GENERATING);
         }

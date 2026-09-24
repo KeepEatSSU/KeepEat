@@ -181,8 +181,19 @@
         form.querySelectorAll('input[name="targetId"]').forEach(function(radio) {
             radio.addEventListener('change', function() {
                 const targetName = this.closest('tr').querySelector('td:nth-child(2)').textContent.trim();
-                aliasDescription.innerHTML =
-                    `"<strong>${pendingName}</strong>"을(를) "<strong>${targetName}</strong>"의 별칭으로 등록합니다.`;
+                const pendingLabel = document.createElement('strong');
+                pendingLabel.textContent = pendingName;
+
+                const targetLabel = document.createElement('strong');
+                targetLabel.textContent = targetName;
+
+                aliasDescription.replaceChildren(
+                    '"',
+                    pendingLabel,
+                    '"을(를) "',
+                    targetLabel,
+                    '"의 별칭으로 등록합니다.'
+                );
             });
         });
 
@@ -199,9 +210,11 @@
             const addAlias = form.querySelector('input[name="addAlias"]').checked;
 
             modalTargetName.textContent = targetName;
-            modalAliasInfo.innerHTML = addAlias
-                ? `<span class="text-success">"${pendingName}" 별칭으로 등록</span>`
-                : `<span class="text-muted">등록하지 않음</span>`;
+            modalAliasInfo.textContent = addAlias
+                ? `"${pendingName}" 별칭으로 등록`
+                : '등록하지 않음';
+            modalAliasInfo.classList.toggle('text-success', addAlias);
+            modalAliasInfo.classList.toggle('text-muted', !addAlias);
 
             const modal = new bootstrap.Modal(document.getElementById('confirmModal'));
             modal.show();

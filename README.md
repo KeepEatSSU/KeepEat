@@ -50,6 +50,27 @@ DB 설정은 프로필마다 별도 변수명을 사용하지 않습니다. 모�
 배포 워크플로가 각각 `DEMO_DB_*`, `PROD_DB_*` GitHub Secrets를 이 `DB_*` 이름으로
 매핑합니다.
 
+### DB 마이그레이션 (Flyway)
+
+DB 스키마는 Flyway 마이그레이션(`backend/src/main/resources/db/migration`)으로 관리합니다.
+
+| 프로필 | 스키마 생성 | `ddl-auto` |
+|---|---|---|
+| `prod`, `demo` | Flyway (`baseline-on-migrate`, `baseline-version: 1`) | `validate` |
+| `test` (CI) | Flyway가 빈 DB에 `V1`부터 적용 | `validate` |
+| `local` | Flyway 비활성화, Hibernate가 생성 후 `data.sql` 실행 | `create` |
+
+- 스키마 변경은 반드시 `V{n}__설명.sql`(예: `V2__add_user_profile_image.sql`) 새 파일로만 반영합니다.
+  엔티티만 바꾸고 마이그레이션을 빠뜨리면 `validate`로 인해 CI 테스트와 서버 기동이 실패합니다.
+- 이미 적용된(머지된) 마이그레이션 파일은 절대 수정하지 않습니다. 체크섬이 바뀌어 기동이 실패합니다.
+  잘못된 내용은 다음 버전 마이그레이션으로 고칩니다.
+- `V1__init.sql`은 Flyway 도입 시점의 엔티티 기준 스키마입니다. 기존 운영·데모 DB는
+  `flyway_schema_history`가 없으므로 V1을 실행하지 않고 baseline(V1 적용 완료)으로 처리되며,
+  빈 DB에서는 V1이 실행됩니다.
+- Flyway 도입 배포 전 확인: 운영 DB의 `pg_dump --schema-only --no-owner --no-privileges` 결과를
+  `V1__init.sql`과 대조해 차이가 없음을 확인합니다. 어긋나 있으면 `validate`에서 기동이 실패하므로
+  먼저 보정 마이그레이션을 준비합니다.
+
 ## 5. 로컬 환경변수와 PostgreSQL 실행
 
 보안을 위해 실제 `.env`는 저장소에 포함하지 않습니다. 저장소 루트에서 다음과 같이

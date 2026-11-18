@@ -4,7 +4,12 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: validate
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
 
 server:
   # Demo terminates TLS in Spring directly, so forwarded client-IP headers must not be trusted.

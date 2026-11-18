@@ -1,0 +1,45 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: ko-KR
+tone_instructions: "모든 리뷰와 답변은 한국어로, 간결하고 근거 중심으로 작성한다. 지적에는 이유와 개선 예시를 함께 제시한다."
+
+reviews:
+  profile: chill
+  high_level_summary: true
+  poem: false
+  review_status: true
+  collapse_walkthrough: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "^dev$"
+      - "^main$"
+  path_filters:
+    - "!**/build/**"
+    - "!**/.gradle/**"
+    - "!backend/gradle/wrapper/**"
+    - "!backend/gradlew"
+    - "!backend/gradlew.bat"
+    # 자동 생성된 대용량 시드 데이터는 리뷰 대상에서 제외
+    - "!backend/src/main/resources/data.sql"
+  path_instructions:
+    - path: "backend/src/main/java/**"
+      instructions: |
+        Spring Boot 4 / Java 21 / JPA 백엔드다. 다음을 우선 확인한다.
+        - 트랜잭션 경계(@Transactional 범위, 외부 API 호출이 트랜잭션 안에 있는지, 커밋 전 @Async 호출)
+        - N+1 쿼리, 불필요한 엔티티 로딩, 페이징 없는 대량 조회
+        - 인증/인가 누락, 사용자 소유권 검증(userId 조건) 누락
+        - 시간대: LocalDate.now()/LocalDateTime.now() 사용 시 기준 시간대(Asia/Seoul) 일관성
+        - 예외는 KeepEatException + ErrorCode 규칙을 따르는지
+        - Enum은 @Enumerated(EnumType.STRING)인지
+    - path: "backend/src/main/resources/db/migration/**"
+      instructions: |
+        Flyway 마이그레이션이다. 이미 적용된 마이그레이션 파일 수정 여부, 엔티티 변경과의 일치,
+        운영 데이터가 있는 테이블에서의 잠금·다운타임 위험(NOT NULL 추가, 대용량 테이블 인덱스 생성 등)을 확인한다.
+    - path: "backend/src/main/resources/application*.yml"
+      instructions: "비밀값 하드코딩 여부와 프로필(local/demo/prod/test) 간 설정 차이가 의도된 것인지 확인한다."
+    - path: "backend/src/test/**"
+      instructions: "테스트가 실제 동작을 검증하는지, 시간·외부 API 의존으로 불안정해질 여지가 없는지 확인한다."
+
+chat:
+  auto_reply: true

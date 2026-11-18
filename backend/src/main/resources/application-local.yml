@@ -3,6 +3,8 @@ spring:
     hibernate:
       ddl-auto: create
     show-sql: true
+    # data.sql을 Hibernate 스키마 생성 이후에 실행한다. Flyway와 함께 쓸 수 없어 local에만 둔다.
+    defer-datasource-initialization: true
     properties:
       hibernate:
         format_sql: true
@@ -11,3 +13,7 @@ spring:
   sql:
     init:
       mode: always
+
+  # 로컬은 ddl-auto: create + data.sql 흐름을 유지하므로 Flyway를 사용하지 않는다.
+  flyway:
+    enabled: false

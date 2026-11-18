@@ -8,7 +8,7 @@
 * IntelliJ IDEA
 
 ## 2. 프로젝트 클론 및 브랜치 설정
-본 프로젝트의 개발 브랜치는 `dev`이며, 백엔드 작업은 `BE` 브랜치에서 진행합니다.
+본 프로젝트의 개발 브랜치는 `dev`입니다. 백엔드 작업 브랜치도 `dev`에서 만들고, PR도 `dev`로 보냅니다.
 
 ```bash
 # 프로젝트 클론
@@ -18,9 +18,6 @@ cd KeepEat
 # 최신 변경사항 동기화 및 dev 브랜치 이동
 git fetch origin
 git switch dev
-
-# 백엔드 통합 브랜치로 이동
-git switch BE
 ```
 
 ## 3. Java SDK 및 IDE 설정
@@ -166,13 +163,14 @@ docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build ap
 
 ## 8. 브랜치 규칙 및 협업 가이드
 
-백엔드 파트의 신규 작업은 항상 `BE` 브랜치를 기준으로 파생시킵니다.
+백엔드 파트의 신규 작업은 항상 `dev` 브랜치를 기준으로 파생시키고, PR 대상도 `dev`입니다.
 
 * 기능 브랜치 생성:
   ```bash
-  git switch BE
-  git switch -c feature/BE/작업할내용
-  # 예: git switch -c feature/BE/login
+  git switch dev
+  git pull
+  git switch -c feature/BE/{이슈번호}-작업할내용
+  # 예: git switch -c feature/BE/12-login
   ```
 
 * 원활한 프로젝트 진행과 일관성 있는 코드 품질을 위해 자체적인 컨벤션을 지키고자 합니다.

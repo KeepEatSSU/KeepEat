@@ -41,9 +41,8 @@ out/
 
 ### 프로젝트 문서 (비공개) ###
 docs/
-CLAUDE.md
 CLAUDE.local.md
-AGENTS.md
+AGENTS.override.md
 .claude/
 #data.sql
 scripts/

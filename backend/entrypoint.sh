@@ -1,4 +1,4 @@
 #!/bin/sh
 set -e
 
-exec java ${JAVA_OPTS:-} -jar /app/app.jar
+exec java -Duser.timezone="${TZ:-Asia/Seoul}" ${JAVA_OPTS:-} -jar /app/app.jar

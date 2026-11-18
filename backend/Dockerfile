@@ -1,5 +1,8 @@
 FROM eclipse-temurin:21-jre-jammy
 
+# 스케줄러(Asia/Seoul)와 LocalDate.now()(JVM 기본 시간대)의 기준을 맞추기 위해 컨테이너 시간대를 KST로 고정
+ENV TZ=Asia/Seoul
+
 WORKDIR /app
 
 RUN apt-get update \

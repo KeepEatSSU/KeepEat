@@ -20,9 +20,8 @@ reviews:
     - "!backend/gradle/wrapper/**"
     - "!backend/gradlew"
     - "!backend/gradlew.bat"
-    # 자동 생성된 대용량 시드·baseline 스키마는 리뷰 대상에서 제외
+    # 자동 생성된 대용량 시드 데이터는 리뷰 대상에서 제외
     - "!backend/src/main/resources/data.sql"
-    - "!backend/src/main/resources/db/migration/V1__init.sql"
   path_instructions:
     - path: "backend/src/main/java/**"
       instructions: |

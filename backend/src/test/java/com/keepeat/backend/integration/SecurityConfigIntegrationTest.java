@@ -55,4 +55,11 @@ class SecurityConfigIntegrationTest {
                 new PasswordResetRequest("valid-reset-token", "NewPassword1!")
         );
     }
+
+    @Test
+    @DisplayName("perf 프로필이 아니면 알림 배치 측정용 트리거가 열리지 않는다")
+    void perfTriggerIsNotExposedOutsidePerfProfile() throws Exception {
+        mockMvc.perform(post("/api/internal/perf/expiry-batch"))
+                .andExpect(status().isUnauthorized());
+    }
 }

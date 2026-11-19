@@ -1,0 +1,15 @@
+# 소비기한 알림 배치 측정 전용 프로필 (#51)
+# local과 함께 켠다: SPRING_PROFILES_ACTIVE=local,perf
+app:
+  notification:
+    # 정해진 시각 실행을 끄고, 수동 트리거(POST /api/internal/perf/expiry-batch)로만 실행한다
+    expiry-cron: "-"
+  push:
+    expo-push-url: ${EXPO_MOCK_BASE_URL:http://localhost:8089}/--/api/v2/push/send
+    expo-receipts-url: ${EXPO_MOCK_BASE_URL:http://localhost:8089}/--/api/v2/push/getReceipts
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

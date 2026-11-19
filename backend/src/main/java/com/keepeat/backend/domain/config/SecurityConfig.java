@@ -10,6 +10,8 @@ import com.keepeat.backend.domain.user.repository.UserSessionRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.env.Environment;
+import org.springframework.core.env.Profiles;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.AuthenticationEntryPoint;
@@ -26,6 +28,7 @@ public class SecurityConfig {
     private final OAuth2SuccessHandler oAuth2SuccessHandler;
     private final AppUserRepository appUserRepository;
     private final UserSessionRepository userSessionRepository;
+    private final Environment environment;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -34,9 +37,12 @@ public class SecurityConfig {
                         "/api/**", "/oauth2/**", "/login/oauth2/**", "/actuator/**"
                 ))
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-                .authorizeHttpRequests(auth -> auth
-
-
+                .authorizeHttpRequests(auth -> {
+                    // 알림 배치 측정용 수동 트리거는 perf 프로필에서만 연다 (#51). 다른 프로필에서는 컨트롤러도 없다
+                    if (environment.acceptsProfiles(Profiles.of("perf"))) {
+                        auth.requestMatchers("/api/internal/perf/**").permitAll();
+                    }
+                    auth
                         .requestMatchers("/api/users/signup","/api/users/login","/api/users/refresh","/api/users/oauth2/exchange","/error","/swagger-ui/**","/v3/api-docs/**","/actuator/health","/actuator/health/**","/actuator/prometheus").permitAll()
                         .requestMatchers("/admin/login").permitAll()
                         .requestMatchers("/admin/**").hasRole("ADMIN")
@@ -47,8 +53,8 @@ public class SecurityConfig {
                                 "/api/users/password/find/verify",
                                 "/api/users/password/reset"
                         ).permitAll()
-                        .anyRequest().authenticated()
-                )
+                        .anyRequest().authenticated();
+                })
                 .exceptionHandling(exception -> exception
                         .authenticationEntryPoint(customAuthenticationEntryPoint)
                 )

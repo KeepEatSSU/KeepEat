@@ -62,8 +62,12 @@ app:
     admin-cookie-secure: false
   notification:
     retention-days: ${NOTIFICATION_RETENTION_DAYS:90}
+    # 소비기한 알림 배치 실행 시각 (Asia/Seoul). "-"이면 정해진 시각 실행을 끈다
+    expiry-cron: "0 0 9 * * *"
   push:
     receipt-check-delay-ms: ${PUSH_RECEIPT_CHECK_DELAY_MS:60000}
+    expo-push-url: https://exp.host/--/api/v2/push/send
+    expo-receipts-url: https://exp.host/--/api/v2/push/getReceipts
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI}
 

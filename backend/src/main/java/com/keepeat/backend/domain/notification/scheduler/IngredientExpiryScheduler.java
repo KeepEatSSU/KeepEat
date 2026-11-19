@@ -30,7 +30,7 @@ public class IngredientExpiryScheduler {
     private final UserIngredientRepository userIngredientRepository;
     private final NotificationService notificationService;
 
-    @Scheduled(cron = "0 0 9 * * *", zone = "Asia/Seoul")
+    @Scheduled(cron = "${app.notification.expiry-cron:0 0 9 * * *}", zone = "Asia/Seoul")
     public void checkExpiringIngredients() {
         LocalDate today = LocalDate.now(SEOUL);
         LocalDate targetDate = today.plusDays(3);

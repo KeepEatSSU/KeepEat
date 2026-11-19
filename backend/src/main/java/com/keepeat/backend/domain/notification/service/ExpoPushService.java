@@ -6,6 +6,7 @@ import com.keepeat.backend.domain.notification.dto.PushSendRequest;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -31,8 +32,6 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class ExpoPushService {
 
-    private static final String EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
-    private static final String EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts";
     private static final int MAX_SEND_ATTEMPTS = 3;
     private static final int MAX_RECEIPT_ATTEMPTS = 10;
 
@@ -41,10 +40,17 @@ public class ExpoPushService {
     private final ConcurrentHashMap<String, PendingReceipt> pendingReceipts = new ConcurrentHashMap<>();
     private final RestTemplate restTemplate = createRestTemplate();
 
+    // 테스트 환경에서 Expo mock으로 바꿀 수 있도록 설정값으로 둔다 (#51). 기본값은 실제 Expo 주소다.
+    @Value("${app.push.expo-push-url:https://exp.host/--/api/v2/push/send}")
+    private String expoPushUrl = "https://exp.host/--/api/v2/push/send";
+
+    @Value("${app.push.expo-receipts-url:https://exp.host/--/api/v2/push/getReceipts}")
+    private String expoReceiptsUrl = "https://exp.host/--/api/v2/push/getReceipts";
+
     public void sendMessage(PushSendRequest request) {
         for (int attempt = 1; attempt <= MAX_SEND_ATTEMPTS; attempt++) {
             try {
-                JsonNode response = post(EXPO_PUSH_URL, buildPushBody(request));
+                JsonNode response = post(expoPushUrl, buildPushBody(request));
                 handleTicketResponse(response.path("data"), request);
                 return;
             } catch (RestClientException | RetryablePushException e) {
@@ -74,7 +80,7 @@ public class ExpoPushService {
         }
 
         try {
-            JsonNode data = post(EXPO_RECEIPTS_URL, Map.of("ids", ids)).path("data");
+            JsonNode data = post(expoReceiptsUrl, Map.of("ids", ids)).path("data");
             for (String id : ids) {
                 PendingReceipt pending = pendingReceipts.get(id);
                 if (pending == null) {

@@ -18,6 +18,7 @@
 | local | `ddl-auto: create` + `data.sql` | Flyway 꺼짐 |
 | test | Flyway 마이그레이션 + `validate` | 마이그레이션이 빠지면 테스트 실패 |
 | demo / prod | Flyway + `validate` | `update` 금지 |
+| perf | (local과 함께 켬: `local,perf`) | 알림 배치 측정 전용. 정해진 시각 실행을 끄고, Expo 주소를 mock으로 바꾸고, `POST /api/internal/perf/expiry-batch` 트리거와 Prometheus 지표를 연다 |
 
 ## 구조와 규칙
 - 패키지: `com.keepeat.backend.domain.<도메인>`, 계층은 Controller → Service → Repository → Entity

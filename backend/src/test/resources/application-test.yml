@@ -29,6 +29,8 @@ spring:
     google:
       genai:
         api-key: test-gemini-key
+    openai:
+      api-key: test-openai-key
 
   security:
     oauth2:
@@ -47,11 +49,6 @@ spring:
     port: 25
     username: test
     password: test
-
-openai:
-  api-key: test-openai-key
-  model: gpt-4o
-  max-tokens: 1024
 
 jwt:
   secret: test-jwt-secret-key-test-jwt-secret-key-test-jwt-secret-key

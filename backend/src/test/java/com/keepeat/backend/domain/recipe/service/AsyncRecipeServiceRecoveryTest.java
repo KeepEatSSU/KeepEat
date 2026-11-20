@@ -70,13 +70,9 @@ class AsyncRecipeServiceRecoveryTest {
         usageRepository.deleteAll();
 
         chatClient = mock(ChatClient.class, RETURNS_DEEP_STUBS);
-        ChatClient.Builder builder = mock(ChatClient.Builder.class);
-        when(builder.defaultOptions(any())).thenReturn(builder);
-        when(builder.defaultSystem(anyString())).thenReturn(builder);
-        when(builder.build()).thenReturn(chatClient);
 
         notificationService = mock(NotificationService.class);
-        service = new AsyncRecipeService(builder, jobRepository, usageRepository,
+        service = new AsyncRecipeService(chatClient, jobRepository, usageRepository,
                 notificationService, objectMapper, transactionTemplate);
     }
 
@@ -84,7 +80,7 @@ class AsyncRecipeServiceRecoveryTest {
     @DisplayName("AI 호출 실패 시 job은 FAILED가 되고 사용량은 소진되지 않아 같은 날 재클레임이 가능하다")
     void aiFailureMarksJobFailedAndKeepsQuota() {
         claimJob(ATTEMPT_A, Instant.now());
-        when(chatClient.prompt().user(anyString()).call().entity(GeneratedRecipesResponseDto.class))
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(GeneratedRecipesResponseDto.class))
                 .thenThrow(new TransientAiException("quota exceeded"));
 
         service.processGeneration(USER_ID, "prompt", todayKst, ATTEMPT_A);
@@ -153,7 +149,7 @@ class AsyncRecipeServiceRecoveryTest {
     void zombieFailureCannotOverrideReclaimedJob() {
         claimJob(ATTEMPT_A, Instant.now().minus(Duration.ofMinutes(11)));
         claimJob(ATTEMPT_B, Instant.now());
-        when(chatClient.prompt().user(anyString()).call().entity(GeneratedRecipesResponseDto.class))
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(GeneratedRecipesResponseDto.class))
                 .thenThrow(new TransientAiException("quota exceeded"));
 
         service.processGeneration(USER_ID, "prompt", todayKst, ATTEMPT_A);
@@ -185,7 +181,7 @@ class AsyncRecipeServiceRecoveryTest {
         GeneratedRecipesResponseDto response = new GeneratedRecipesResponseDto(List.of(
                 new GeneratedRecipeDto("김치볶음밥", null, null, "20분", 500, List.of(), List.of("1. 볶는다."))
         ));
-        when(chatClient.prompt().user(anyString()).call().entity(GeneratedRecipesResponseDto.class))
+        when(chatClient.prompt().system(anyString()).user(anyString()).call().entity(GeneratedRecipesResponseDto.class))
                 .thenReturn(response);
     }
 

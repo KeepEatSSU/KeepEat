@@ -4,7 +4,7 @@
 
 ## 스택
 - Spring Boot 4 · Java 21 · Gradle · PostgreSQL 18 · JPA · Flyway
-- 인증: JWT + Google OAuth2 · AI: Spring AI(Google GenAI), OpenAI(OCR) · 푸시: Expo
+- 인증: JWT + Google OAuth2 · AI: Spring AI `ChatClient`(OpenAI, Google GenAI) · 푸시: Expo
 
 ## 명령어
 - 빌드와 테스트: `./gradlew build`
@@ -25,6 +25,7 @@
 - Enum 컬럼은 반드시 `@Enumerated(EnumType.STRING)`
 - 날짜 기준은 `Asia/Seoul`이다
 - 외부 API(AI, Expo) 호출은 DB 트랜잭션 밖에서 한다
+- AI 호출은 `domain/config/AiConfig`가 만드는 기능별 `ChatClient`(`ocrChatClient`, `recipeChatClient`, `ingredientChatClient`)로 한다. 공급자·모델은 `app.ai.<기능>.provider|model`(환경변수 `AI_<기능>_PROVIDER|MODEL`)로 바꾸고, 코드에 공급자 전용 옵션 클래스나 모델명을 넣지 않는다
 
 ## DB 변경
 - 엔티티를 바꾸면 `src/main/resources/db/migration/V{n}__설명.sql`을 함께 추가한다

@@ -4,9 +4,11 @@
 #   after-trigger N     트리거 N초 뒤 (F1-a: 2, F1-b: 10 — 큐가 가장 길 때를 대략 시작 10초 뒤로 근사)
 #   after-last-send N   mock에 마지막 발송이 들어오고 N초 뒤 (F1-c: 60, 300). 5초 동안 새 발송이 없으면 끝난 것으로 본다
 #   stop = docker stop(SIGTERM, 정상 종료) / kill = docker kill(SIGKILL, 강제 종료)
+# 환경변수: RESTART_SERVICE 내릴 서비스(기본 app, F6은 db) / DOWN_S 내린 뒤 다시 띄우기까지 기다릴 초(기본 0)
 set -euo pipefail
 cd "$(dirname "$0")"
 RUN_ID=$1 HOW=$2 WHEN=$3 SECS=$4
+SVC=${RESTART_SERVICE:-app}
 DIR=runs/$RUN_ID
 now_ms() { python3 -c 'import time; print(int(time.time()*1000))'; }
 log() { echo "$(now_ms) $*" | tee -a "$DIR/restart.log"; }
@@ -34,13 +36,14 @@ case $WHEN in
 esac
 
 while [ "$(now_ms)" -lt "$TARGET" ]; do sleep 0.05; done
-log "$HOW app (planned=+$(( (TARGET - START_MS) / 1000 ))s from trigger)"
+log "$HOW $SVC (planned=+$(( (TARGET - START_MS) / 1000 ))s from trigger)"
 case $HOW in
-    stop) docker compose stop app >/dev/null 2>&1 ;;
-    kill) docker compose kill app >/dev/null 2>&1 ;;
+    stop) docker compose stop "$SVC" >/dev/null 2>&1 ;;
+    kill) docker compose kill "$SVC" >/dev/null 2>&1 ;;
     *) echo "unknown method: $HOW" >&2; exit 2 ;;
 esac
-log "app down"
-docker compose start app >/dev/null 2>&1
-docker compose up -d --wait app >/dev/null 2>&1
-log "app up"
+log "$SVC down"
+sleep "${DOWN_S:-0}"
+docker compose start "$SVC" >/dev/null 2>&1
+docker compose up -d --wait "$SVC" >/dev/null 2>&1
+log "$SVC up"

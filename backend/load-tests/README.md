@@ -1,21 +1,165 @@
 # KeepEat 부하 테스트
 
-KeepEat 백엔드의 k6 부하 테스트 스크립트와 실행 방법을 관리한다.
-
-k6는 애플리케이션 의존성이 아닌 외부 CLI 도구다. `build.gradle`이나 `package.json`에 추가하지 않고, Docker 이미지로 실행하며 테스트 스크립트만 이 폴더에서 Git으로 관리한다.
-
-## 현재 구성
+k6는 애플리케이션 의존성이 아닌 외부 CLI 도구다. `build.gradle`이나 `package.json`에 추가하지 않고 Docker 이미지로 실행한다.
 
 ```text
 load-tests/
-├─ README.md
-└─ smoke-health.js
+├─ docker-compose.yml     측정 환경 (app·db·mock + k6, Prometheus·Grafana)
+├─ prometheus.yml
+├─ mock/ExpoMock.java     Expo Push API mock (의존성 없는 단일 파일)
+├─ seed/                  시드 생성 (seed.sh, seed.sql)
+├─ k6/tap-flow.js         배치 트리거 + 알림 탭 흐름 트래픽
+├─ aggregate/             단계별 건수·도달률 집계
+├─ run.sh                 측정 1회 실행
+├─ restart.sh             재시작·DB 중지 제어
+├─ smoke.sh               측정 도구 검증 (Smoke)
+├─ smoke-health.js        API 연결 확인용 (아래 "API 부하 테스트")
+└─ runs/                  실행 결과 (git 제외)
 ```
 
-- `smoke-health.js`: `/actuator/health/liveness` 연결 확인용 Smoke 테스트
-- 실제 비즈니스 API 테스트는 이후 시나리오별로 추가한다.
+## 소비기한 알림 배치 측정
 
-## 사전 준비
+### 구성
+| 서비스 | 이미지 | 리소스 | 역할 |
+|---|---|---|---|
+| app | eclipse-temurin:21-jre | 2 vCPU / 1GB, 힙 70% | `perf` 프로필. 정해진 시각 실행을 끄고 트리거로만 배치를 돌린다 |
+| db | postgres:18 | 1 vCPU / 1GB | 매 실행 `down -v`로 초기화한다 |
+| mock | eclipse-temurin:21-jdk | 1 vCPU / 512MB | `java ExpoMock.java`. 지연·장애를 흉내 내고 요청을 `runs/{runId}/mock.jsonl`에 남긴다 |
+| k6 | grafana/k6:1.0.0 | 제한 없음 | `--profile tools`. 배치 트리거와 탭 흐름 트래픽 |
+| prometheus, grafana | | 제한 없음 | `--profile monitoring`. 필요할 때만 켠다 |
+
+- 앱 프로필은 `perf` **단독**이다. `local`은 재시작 때 스키마를 다시 만들어 재시작 시나리오가 성립하지 않는다.
+- 외부 서비스 키는 더미 값이고 `.env`를 읽지 않는다. 메일 health 검사는 꺼져 있다(실제 SMTP 접속 방지).
+- 로컬 수치는 절대 용량이 아니다. **같은 조건에서 개선 전후를 비교**하는 용도다.
+
+### 준비
+Docker만 있으면 된다. 측정할 코드로 jar를 만든다(개선 전후를 바꿀 때마다 다시 만든다).
+
+```bash
+cd backend
+./gradlew bootJar
+cp build/libs/backend-0.0.1-SNAPSHOT.jar build/libs/app.jar
+cd load-tests
+```
+
+### 측정 도구 검증 (Smoke)
+```bash
+./smoke.sh
+```
+대상 10명(정상 7, 앱 끔 1, 토큰 없음 1, 만료 토큰 1)과 대상 아님 10명으로 돌리고, 집계가 정답지와 정확히 일치하는지 판정한다. 약 1~2분 걸린다. `SMOKE PASS`가 나와야 이후 결과를 믿을 수 있다.
+
+### 측정 1회 실행
+```bash
+RUN_ID=L1-base-1 OPEN_RATE=0.144 MEDIAN_S=420 ./run.sh
+```
+초기화 → 시드 → mock 설정 → k6(트리거 + 탭 흐름) [+ 재시작] → receipt 대기 → 집계 순서로 돈다.
+
+| 변수 | 기본값 | 뜻 |
+|---|---|---|
+| `USERS` | 10000 | 가입자 수 |
+| `P_REGISTERED` | 0.5 | 재료를 등록한 비율 |
+| `P_EXPIRING` | 0.3 | 등록 유저 중 3일 안에 만료되는 재료가 있는 비율 |
+| `P_ALLOW` | 0.5 | 알림 허용(OS × 앱). 허용 안 함은 토큰 없음 / 앱 끔이 50:50 |
+| `P_DDAY` | 0.33 | 임박 유저 중 D-day 비율 |
+| `P_EXPIRED_TOKEN` | 0 | 토큰 보유 유저 중 만료 토큰 비율 |
+| `ITEMS` | 10 | 등록 유저당 재료 수(임박 1~3개) |
+| `SEED` | 0.42 | 난수 시드. 같으면 같은 데이터가 나온다 |
+| `MOCK_CONFIG` | 없음 | mock 장애 설정. 아래 표 참고 |
+| `OPEN_RATE` | 0 | 받은 유저 대비 앱을 여는 비율. 0이면 트리거만 한다. 1을 넘으면 같은 유저가 여러 번 연다 |
+| `MEDIAN_S` | 420 | 열기까지 지연 중앙값(초). 지수분포 |
+| `CAP_S` | 10800 | 트래픽을 흘리는 최대 시간(판정 창 3시간) |
+| `RESTART` | 없음 | `"<stop\|kill> <after-trigger\|after-last-send> <초>"` |
+| `RESTART_SERVICE` | app | 내릴 서비스. DB 중지는 `db` |
+| `DOWN_S` | 0 | 내린 뒤 다시 띄우기까지 기다릴 초 |
+| `SETTLE_S` | 720 | 마지막 발송 뒤 receipt를 기다리는 최대 시간 |
+
+**mock 장애 설정** (`MOCK_CONFIG`, 실행 중에는 `POST localhost:18089/__perf/config?키=값`)
+| 키 | 기본값 | 뜻 |
+|---|---|---|
+| `p99Ms` | 575 | 지연 p99. 실측 분위수(p50 72 / p90 100 / p95 138 / p99 575ms) 사이를 선형 보간한다 |
+| `rate5xx` | 0 | 500 응답 비율 |
+| `rateTimeout` | 0 | 응답 없이 `timeoutMs` 기다렸다 끊는 비율(접수 안 됨) |
+| `rateTimeoutAccepted` | 0 | 접수는 하고 응답만 `timeoutMs` 늦는 비율(앱 재시도 시 중복) |
+| `rateDrop` | 0 | 응답 없이 연결을 닫는 비율 |
+| `timeoutMs` | 6000 | 앱 응답 타임아웃(5초)보다 길게 둔다 |
+| `force429Seconds` | – | 지금부터 N초 동안 모든 발송에 429 |
+| `rateLimitPerSec` | 600 | 초당 한도. 넘으면 429 |
+| `receiptMissingRate` | 0 | receipt가 끝까지 나오지 않는 비율 |
+| `receiptDelayMs` | 1000 | ticket 발급 뒤 receipt가 조회되기까지 |
+
+만료 토큰은 시드가 토큰 이름에 `expired`를 넣고, mock은 그 토큰에 `DeviceNotRegistered`를 돌려준다.
+
+### 시나리오별 명령 (테스트 격자 v1)
+격자는 실행 전에 고정한 값이다. 각 조합을 3회 반복하고, 편차가 10%를 넘으면 5회 반복한다. 개선 전후를 같은 명령으로 돌린다.
+
+```bash
+# Load L1 — 기준 / 낮음 / 높음
+OPEN_RATE=0.144 MEDIAN_S=420 ./run.sh
+P_REGISTERED=0.3 P_EXPIRING=0.1 P_ALLOW=0.25 P_DDAY=0.1 OPEN_RATE=0.03 MEDIAN_S=2880 ./run.sh
+P_REGISTERED=0.8 P_EXPIRING=0.6 P_ALLOW=0.9 P_DDAY=0.6 OPEN_RATE=0.144 MEDIAN_S=420 ./run.sh
+
+# F1 재시작 — 종료 방식은 stop / kill 둘 다
+RESTART="kill after-trigger 2" ./run.sh          # F1-a 알림 저장 중
+RESTART="kill after-trigger 10" ./run.sh         # F1-b 큐가 가장 길 때(근사)
+RESTART="kill after-last-send 60" ./run.sh       # F1-c 마지막 발송 1분 뒤 (5분 뒤는 300)
+
+# F2 5xx·타임아웃 합계 0.0002 / 0.005 / 0.05. 타임아웃 일부는 접수 후 응답 지연
+#    5xx·타임아웃·접수 후 지연 사이의 분배는 미정이다. 정하면 이 예시를 고친다
+MOCK_CONFIG="rate5xx=0.005" ./run.sh
+
+# F3 Expo 전달 지연 30분 / 3시간 / 10시간 → receipt 지연
+MOCK_CONFIG="receiptDelayMs=1800000" ./run.sh
+
+# F4 429 유지 1분 / 10분
+MOCK_CONFIG="force429Seconds=60" ./run.sh
+
+# F5 receipt 누락 1% / 10%, receipt 지연 15분 / 30분
+MOCK_CONFIG="receiptMissingRate=0.01" ./run.sh
+MOCK_CONFIG="receiptDelayMs=900000" ./run.sh
+
+# F6 DB 중지 10초 / 60초
+RESTART_SERVICE=db DOWN_S=10 RESTART="stop after-trigger 2" ./run.sh
+
+# F7 만료 토큰 5% / 30%
+P_EXPIRED_TOKEN=0.05 ./run.sh
+
+# ST1 발송 규모: 알림 대상(Expo 요청) ≈ USERS × P_REGISTERED × P_EXPIRING × P_ALLOW (기본 비율이면 USERS × 0.075)
+USERS=66700 ./run.sh                              # 대상 약 5,000명
+
+# ST3 Expo 꼬리 지연 p99 575 / 1759 / 5000ms
+MOCK_CONFIG="p99Ms=5000" ./run.sh
+
+# ST4 동시 트래픽: 발송은 L1 기준 고정, 열람 14.4% → 100% → 2배 → 5배 → 10배, 지연 1분
+OPEN_RATE=1 MEDIAN_S=60 ./run.sh
+OPEN_RATE=10 MEDIAN_S=60 ./run.sh
+```
+
+Stress 중단 조건: ① 배치 시작 + 3시간 초과 ② 큐 1,000 + 스레드 16개 포화 ③ 오류율 5% 초과(API 포함) ④ 앱 다운·메모리 부족. 하나라도 나오면 다음 단계로 올리지 않는다. ②는 `--profile monitoring`으로 Prometheus를 켜고 `executor_queued_tasks{name="pushExecutor"}`, `executor_active_threads`, `hikaricp_connections_pending` 등으로 본다.
+
+### 결과 읽기
+`run.sh` 끝에 집계가 출력된다. 원자료는 `runs/{RUN_ID}/`(mock.jsonl, k6.log, k6-summary.json, restart.log)와 DB의 `loadtest` 스키마(`expected_user`, `user_result`)에 남는다. 다음 실행의 `down -v`가 DB를 지우므로, 필요한 값은 실행 직후 옮겨 둔다.
+
+| 항목 | 뜻 |
+|---|---|
+| ① 알림 row 저장 | 임박 유저 중 오늘 알림이 저장된 유저. 차이 = L1 |
+| ② Expo 요청 유저 | 앱 설정 켬 ∧ 토큰 있음 중 mock에 요청이 온 유저. 차이 = L3·L2 |
+| ③ ticket ok | 도달률 분모 중 ticket을 받은 유저 |
+| ④ receipt ok (도달) | 도달률 분모 중 receipt `ok`까지 확인된 유저 |
+| 도달률 | ④ ÷ 분모. 분모 = 임박 ∧ 앱 켬 ∧ 토큰 있음 ∧ 만료 토큰 아님(사람 기준) |
+| 미도달 원인 | `unverified_our_side`: receipt는 준비됐는데 앱이 조회하지 않음(L4 재시작, L5 조기 포기). `unverified_expo_side`: Expo가 receipt를 주지 않음 |
+| 정확성 | 예상 밖 저장·요청, 중복(같은 알림에 ticket 2개 이상), 재시도 횟수, 지워지지 않은 만료 토큰 |
+| 시간 | 트리거부터 마지막 ticket·마지막 D-day ticket까지(초). 판정 마감은 10800초(시작 + 3시간) |
+| 탭 흐름 트래픽 | k6 요청 수, 실패율, 지연 분포 |
+
+### 근사와 한계
+- 탭 흐름 도착 곡선은 "전원이 트리거 시점에 받았다"고 근사한다. 발송이 길어지면 실제보다 앞쪽에 몰린다(비관적).
+- 재시작 "큐가 가장 길 때"는 트리거 10초 뒤로, "마지막 발송"은 mock에 5초 동안 새 요청이 없을 때로 판단한다.
+- 시드의 "오늘"은 KST 날짜다. 자정을 넘겨 실행하면 대상이 바뀐다.
+- 연결 끊김은 RST가 아니라 응답 없이 닫기(EOF)다. 앱에서는 둘 다 같은 재시도 경로를 탄다.
+
+## API 부하 테스트
+
+### 사전 준비
 
 - Docker Desktop 실행
 - PostgreSQL 실행
@@ -28,7 +172,7 @@ load-tests/
 cd .\backend
 ```
 
-## k6 이미지 준비
+### k6 이미지 준비
 
 최초 한 번만 이미지를 내려받는다.
 
@@ -44,7 +188,7 @@ docker run --rm grafana/k6 version
 
 이미지는 Docker Desktop 저장소에 유지된다. `--rm`은 테스트 종료 후 임시 컨테이너만 삭제하며 이미지와 프로젝트 파일은 삭제하지 않는다.
 
-## Smoke 테스트 실행
+### Smoke 테스트 실행
 
 먼저 Spring 서버의 liveness를 확인한다.
 
@@ -84,7 +228,7 @@ docker run --rm `
   grafana/k6 run --summary-mode=full /scripts/smoke-health.js
 ```
 
-## 주요 지표 해석
+### 주요 지표 해석
 
 | 지표 | 의미 | 확인할 내용 |
 |---|---|---|
@@ -120,11 +264,11 @@ Full summary에서 확인할 수 있는 HTTP 세부 지표:
 - `http_req_waiting`: 응답 첫 바이트를 기다린 시간
 - `http_req_receiving`: 응답 데이터를 받은 시간
 
-## 현재 확인된 내용
+### 현재 확인된 내용
 
 `smoke-health.js`를 통해 k6 컨테이너에서 Spring Boot 애플리케이션으로 요청을 보내고 응답을 검증하는 과정이 정상 동작함을 확인했다.
 
-## 시나리오 추가 방향
+### 시나리오 추가 방향
 
 처음에는 API별 단일 시나리오로 기준선을 만들고, 이후 실제 사용자 흐름을 섞은 시나리오를 추가한다.
 
@@ -160,7 +304,7 @@ GET /api/v1/user-ingredients
 GET /api/v1/recipes/detail/{recipeId}
 ```
 
-## 인증이 필요한 테스트
+### 인증이 필요한 테스트
 
 로그인을 매 iteration마다 수행하지 않는다. 테스트 전에 Access Token을 준비하고 환경변수로 전달한다.
 
@@ -190,7 +334,7 @@ const params = {
 
 AI, OCR, 이메일, Push처럼 비용이나 외부 Rate Limit이 있는 API는 최초 부하 테스트 대상에서 제외한다.
 
-## 테스트 결과 기록
+### 테스트 결과 기록
 
 각 테스트에서 최소한 다음 항목을 기록한다.
 

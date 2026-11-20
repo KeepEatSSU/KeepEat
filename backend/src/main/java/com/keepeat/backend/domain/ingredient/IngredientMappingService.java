@@ -57,8 +57,7 @@ public class IngredientMappingService {
                         .temperature(0.1)
                         .maxOutputTokens(5000)
                         .model("gemini-flash-lite-latest")
-                        .responseMimeType("application/json")
-                        .build())
+                        .responseMimeType("application/json"))
                 .defaultSystem("""
                             Role: 식품 저장·보관 전문가
                             

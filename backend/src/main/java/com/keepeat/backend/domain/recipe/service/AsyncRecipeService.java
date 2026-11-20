@@ -50,8 +50,7 @@ public class AsyncRecipeService {
                         .temperature(0.2)
                         .maxOutputTokens(8000)
                         .model("gemini-2.5-pro")
-                        .responseMimeType("application/json")
-                        .build())
+                        .responseMimeType("application/json"))
                 .defaultSystem("""
                         Role: 제로 웨이스트 전문 셰프
                         당신은 냉장고 재료 활용을 극대화하여 버려지는 식재료를 최소화하고, 미식적 완성도가 높은 '진짜 요리'를 설계하는 1인분 요리 전문가입니다.

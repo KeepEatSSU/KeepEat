@@ -30,14 +30,21 @@ services:
       retries: 30
 
   mock:
-    image: wiremock/wiremock:3.13.1
+    # Expo mock (load-tests/mock/ExpoMock.java). 의존성 없는 단일 파일이라 JDK로 소스를 바로 실행한다
+    image: eclipse-temurin:21-jdk-jammy
     cpus: 1
     mem_limit: 512m
-    command: ["--port", "8080", "--disable-banner"]
+    command: ["java", "-XX:MaxRAMPercentage=70", "/mock/ExpoMock.java"]
+    volumes:
+      - ./mock:/mock:ro
+      - ./runs:/runs
     ports:
       - "${PERF_MOCK_PORT:-18089}:8080"
-    volumes:
-      - ./mock/mappings:/home/wiremock/mappings:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/__perf/config"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
 
   app:
     image: eclipse-temurin:21-jre-jammy
@@ -47,7 +54,7 @@ services:
       db:
         condition: service_healthy
       mock:
-        condition: service_started
+        condition: service_healthy
     environment:
       TZ: Asia/Seoul
       SPRING_PROFILES_ACTIVE: perf

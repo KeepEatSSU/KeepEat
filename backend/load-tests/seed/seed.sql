@@ -48,7 +48,7 @@ UPDATE seed_user SET dday          = expiring AND r5 < :p_dday,
 
 -- 앱 테이블
 INSERT INTO app_user (id, email, nickname, role, is_notification_enabled)
-SELECT id, 'perf-u' || id || '@perf.local', 'perf' || id, 'ROLE_USER', NOT app_off
+SELECT id, 'perf-u' || id || '@loadtest.local', 'perf' || id, 'ROLE_USER', NOT app_off
 FROM seed_user ORDER BY id;
 
 INSERT INTO device_token (user_id, token, created_at)
@@ -80,19 +80,25 @@ CROSS JOIN ing
 WHERE u.registered
 ORDER BY u.id, k;
 
+-- 세션: k6가 perf 전용 키로 서명한 JWT(sid)를 인증 필터가 통과시키도록 둔다. 로그인 API는 bcrypt 비용 때문에 쓰지 않는다
+INSERT INTO user_session (id, user_id, refresh_token_hash, created_at, expires_at)
+SELECT 'perf-s-' || id, id, 'perf-' || id, now(), now() + interval '2 days'
+FROM seed_user ORDER BY id;
+
 SELECT setval('app_user_id_seq', (SELECT max(id) FROM app_user));
 
--- 정답지: 앱이 만료 토큰을 지워도 남도록 별도 스키마에 둔다
-CREATE SCHEMA IF NOT EXISTS perf;
-DROP TABLE IF EXISTS perf.expected_user;
-CREATE TABLE perf.expected_user AS
+-- 정답지: 앱이 만료 토큰을 지워도 남도록 별도 스키마에 둔다.
+-- 스키마 이름을 DB 사용자(perf)와 같게 두면 search_path("$user", public) 때문에 Flyway가 그 스키마를 기본으로 잡아 재기동이 실패한다
+CREATE SCHEMA IF NOT EXISTS loadtest;
+DROP TABLE IF EXISTS loadtest.expected_user;
+CREATE TABLE loadtest.expected_user AS
 SELECT id AS user_id, registered, expiring, dday, NOT app_off AS enabled, has_token, expired_token, n_expiring,
        (now() AT TIME ZONE 'Asia/Seoul')::date AS seed_date
 FROM seed_user;
-ALTER TABLE perf.expected_user ADD PRIMARY KEY (user_id);
+ALTER TABLE loadtest.expected_user ADD PRIMARY KEY (user_id);
 
-DROP TABLE IF EXISTS perf.seed_params;
-CREATE TABLE perf.seed_params AS
+DROP TABLE IF EXISTS loadtest.seed_params;
+CREATE TABLE loadtest.seed_params AS
 SELECT :users AS users, :p_registered::float AS p_registered, :p_expiring::float AS p_expiring,
        :p_allow::float AS p_allow, :p_dday::float AS p_dday, :p_expired_token::float AS p_expired_token,
        :items AS items, :seed::float AS seed, now() AS seeded_at;
@@ -105,4 +111,4 @@ SELECT count(*)                                                       AS users,
        count(*) FILTER (WHERE expiring AND enabled AND has_token)     AS expo_requests,
        count(*) FILTER (WHERE expiring AND enabled AND has_token AND NOT expired_token) AS deliverable,
        count(*) FILTER (WHERE dday AND enabled AND has_token)         AS dday_targets
-FROM perf.expected_user;
+FROM loadtest.expected_user;

@@ -65,7 +65,8 @@ services:
       DB_USER: perf
       DB_PASSWORD: perf
       # 배치는 아래 외부 서비스를 쓰지 않는다. 실제 키가 섞이지 않도록 더미 값을 고정한다.
-      JWT_SECRET_KEY: perf-only-secret-key-not-for-production-0123456789
+      # k6가 같은 키로 JWT를 서명한다. 32바이트라 HS256이 된다(jjwt는 키 길이로 알고리즘을 고른다)
+      JWT_SECRET_KEY: perf-only-jwt-secret-32-bytes-ok
       GEMINI_API_KEY: dummy
       OPENAI_API_KEY: dummy
       GOOGLE_CLIENT_ID: dummy
@@ -89,6 +90,16 @@ services:
       timeout: 3s
       start_period: 60s
       retries: 30
+
+  # 트리거·동시 트래픽 (k6/tap-flow.js). run.sh가 docker compose run으로 실행한다
+  k6:
+    image: grafana/k6:1.0.0
+    profiles: ["tools"]
+    environment:
+      JWT_SECRET: perf-only-jwt-secret-32-bytes-ok
+    volumes:
+      - ./k6:/scripts:ro
+      - ./runs:/runs
 
   # 흐름 관찰용(E2). 리소스가 앱과 겹치지 않도록 필요할 때만 켠다: --profile monitoring
   prometheus:

@@ -21,7 +21,7 @@ reviews:
     - "!backend/gradlew"
     - "!backend/gradlew.bat"
     # 자동 생성된 대용량 시드 데이터는 리뷰 대상에서 제외
-    - "!backend/src/main/resources/data.sql"
+    - "!backend/src/main/resources/db/seed/V1_1__master_data.sql"
   path_instructions:
     - path: "backend/src/main/java/**"
       instructions: |

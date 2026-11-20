@@ -37,7 +37,7 @@ git switch dev
 | 설정 파일 / 프로필 | 역할 |
 |---|---|
 | `application.yml` | DB 연결, OAuth, 메일, JWT, 외부 API, 로깅, Actuator 등 모든 환경의 공통 설정 |
-| `application-local.yml` / `local` | 로컬 개발용 JPA·SQL 초기화 설정. 활성 프로필을 지정하지 않으면 기본 적용 |
+| `application-local.yml` / `local` | 로컬 개발용 설정. Flyway로 스키마와 마스터 데이터를 만든다. 활성 프로필을 지정하지 않으면 기본 적용 |
 | `application-prod.yml` / `prod` | 운영용 JPA, 메일 타임아웃, 보안 쿠키 설정만 공통 설정 위에 추가 |
 | `application-demo.yml` / `demo` | 데모 DB의 SSL 연결과 Swagger 인증 설정 추가 |
 | `application-tls.yml` / `tls` | Spring이 HTTPS를 직접 종료하는 데모 서버용 TLS 설정 |
@@ -55,7 +55,7 @@ DB 스키마는 Flyway 마이그레이션(`backend/src/main/resources/db/migrati
 |---|---|---|
 | `prod`, `demo` | Flyway (`baseline-on-migrate`, `baseline-version: 1`) | `validate` |
 | `test` (CI) | Flyway가 빈 DB에 `V1`부터 적용 | `validate` |
-| `local` | Flyway 비활성화, Hibernate가 생성 후 `data.sql` 실행 | `create` |
+| `local` | Flyway가 `V1`부터 적용한 뒤 마스터 데이터(`db/seed/V1_1__master_data.sql`)를 넣음 | `validate` |
 
 - 스키마 변경은 반드시 `V{n}__설명.sql`(예: `V2__add_user_profile_image.sql`) 새 파일로만 반영합니다.
   엔티티만 바꾸고 마이그레이션을 빠뜨리면 `validate`로 인해 CI 테스트와 서버 기동이 실패합니다.
@@ -98,6 +98,15 @@ docker compose --env-file .env --profile local ps
 
 ```bash
 docker compose --env-file .env --profile local down
+```
+
+이전 방식(`ddl-auto: create`)으로 만든 로컬 DB가 남아 있으면, 마이그레이션 이력이
+없어서 Flyway가 기동을 거부합니다. 한 번만 볼륨까지 지우고 다시 띄우세요.
+다음 기동 때 Flyway가 스키마와 마스터 데이터를 새로 만듭니다.
+
+```bash
+docker compose --env-file .env --profile local down -v
+docker compose --env-file .env --profile local up -d db
 ```
 
 프로필 없이 `docker compose up -d`를 실행하면 로컬 DB가 아니라 배포용 `app`

@@ -1,19 +1,15 @@
 spring:
   jpa:
     hibernate:
-      ddl-auto: create
+      # 스키마는 Flyway로 만들고 Hibernate는 검증만 한다. 마이그레이션이 빠지면 local에서도 기동이 실패한다 (#56)
+      ddl-auto: validate
     show-sql: true
-    # data.sql을 Hibernate 스키마 생성 이후에 실행한다. Flyway와 함께 쓸 수 없어 local에만 둔다.
-    defer-datasource-initialization: true
     properties:
       hibernate:
         format_sql: true
         highlight_sql: true
 
-  sql:
-    init:
-      mode: always
-
-  # 로컬은 ddl-auto: create + data.sql 흐름을 유지하므로 Flyway를 사용하지 않는다.
+  # local은 스키마 마이그레이션(db/migration) 뒤에 마스터 데이터(db/seed)를 넣는다. db/seed는 local에서만 쓴다
   flyway:
-    enabled: false
+    enabled: true
+    locations: classpath:db/migration,classpath:db/seed

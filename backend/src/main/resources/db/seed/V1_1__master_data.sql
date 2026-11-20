@@ -1,9 +1,9 @@
 -- ============================================
 -- KeepEat 마스터 데이터 (auto-generated)
 -- ============================================
--- 적용 정책: application-local.yml의 sql.init.mode=never이므로
--- 부팅 시 자동 실행되지 않는다. 빈 DB에 1회 시드할 때만 수동 실행.
--- 실행 예: psql -h localhost -U ${DB_USER} -d ${DB_NAME} -f src/main/resources/data.sql
+-- local 프로필 전용 Flyway 시드다(application-local.yml의 locations에 db/seed 포함). V1 스키마 바로 뒤에 한 번 적용된다.
+-- 다른 프로필(test, demo, prod, perf)은 db/seed를 읽지 않는다. perf는 load-tests/seed/seed.sh가 이 파일을 직접 넣는다.
+-- 이미 적용된 마이그레이션이므로 수정하지 않는다. 마스터를 바꾸려면 새 버전 파일을 추가한다.
 
 -- ===========================================
 -- 1. Category

@@ -4,7 +4,8 @@
 # 환경변수
 #   RUN_ID       실행 이름 (기본: run-날짜시각). 결과는 runs/<RUN_ID>/
 #   시드         USERS, P_REGISTERED, P_EXPIRING, P_ALLOW, P_DDAY, P_EXPIRED_TOKEN, ITEMS, SEED (seed.sh 참고)
-#   MOCK_CONFIG  mock 장애 설정 쿼리 문자열. 예: "rate5xx=0.005&rateTimeoutAccepted=0.001"
+#   MOCK_CONFIG  mock 장애 설정 쿼리 문자열. 예: "rate5xx=1"
+#   MOCK_RECOVER, MOCK_RECOVER_AFTER_S   트리거 N초 뒤 mock에 보낼 해제 설정. 예: "rate5xx=0", 60
 #   OPEN_RATE, MEDIAN_S, CAP_S   탭 흐름 트래픽 (k6/tap-flow.js 참고). OPEN_RATE=0이면 트리거만 한다
 #   RESTART      "<stop|kill> <after-trigger|after-last-send> <초>". 예: "kill after-trigger 2"
 #   SETTLE_S     마지막 발송 뒤 receipt를 기다리는 최대 시간. 기본 720초(앱은 약 10분 뒤 확인을 포기한다)
@@ -15,6 +16,8 @@ RUN_ID=${RUN_ID:-run-$(date +%Y%m%d-%H%M%S)}
 DIR=runs/$RUN_ID
 APP=localhost:${PERF_APP_PORT:-18080}
 MOCK=localhost:${PERF_MOCK_PORT:-18089}
+# 중간에 끝나도 백그라운드 작업(재시작·장애 해제)이 다음 실행의 컨테이너를 건드리지 않게 정리한다
+trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
 psql() { docker compose exec -T db psql -U perf -d keepeat -v ON_ERROR_STOP=1 -qtA "$@"; }
 now_ms() { python3 -c 'import time; print(int(time.time()*1000))'; }
 
@@ -29,6 +32,14 @@ fi
 # 탭 흐름 후보 = 알림을 받을 유저(도달률 분모와 같다)
 psql -c "SELECT coalesce(json_agg(json_build_object('id', user_id, 'email', 'perf-u' || user_id || '@loadtest.local') ORDER BY user_id), '[]')
          FROM loadtest.expected_user WHERE expiring AND enabled AND has_token AND NOT expired_token" > "$DIR/users.json"
+
+if [ -n "${MOCK_RECOVER:-}" ]; then
+    (
+        until grep -q 'start_ms=' "$DIR/k6.log" 2>/dev/null; do sleep 0.1; done
+        sleep "${MOCK_RECOVER_AFTER_S:-60}"
+        curl -fsS -X POST "$MOCK/__perf/config?$MOCK_RECOVER" >/dev/null
+    ) &
+fi
 
 if [ -n "${RESTART:-}" ]; then
     # shellcheck disable=SC2086

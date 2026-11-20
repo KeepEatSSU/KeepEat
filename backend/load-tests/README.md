@@ -65,13 +65,14 @@ RUN_ID=L1-base-1 OPEN_RATE=0.144 MEDIAN_S=420 ./run.sh
 | `ITEMS` | 10 | 등록 유저당 재료 수(임박 1~3개) |
 | `SEED` | 0.42 | 난수 시드. 같으면 같은 데이터가 나온다 |
 | `MOCK_CONFIG` | 없음 | mock 장애 설정. 아래 표 참고 |
+| `MOCK_RECOVER` | 없음 | 트리거 `MOCK_RECOVER_AFTER_S`초(기본 60) 뒤 mock에 보낼 해제 설정. 예: `rate5xx=0` |
 | `OPEN_RATE` | 0 | 받은 유저 대비 앱을 여는 비율. 0이면 트리거만 한다. 1을 넘으면 같은 유저가 여러 번 연다 |
 | `MEDIAN_S` | 420 | 열기까지 지연 중앙값(초). 지수분포 |
 | `CAP_S` | 10800 | 트래픽을 흘리는 최대 시간(판정 창 3시간) |
 | `RESTART` | 없음 | `"<stop\|kill> <after-trigger\|after-last-send> <초>"` |
 | `RESTART_SERVICE` | app | 내릴 서비스. DB 중지는 `db` |
 | `DOWN_S` | 0 | 내린 뒤 다시 띄우기까지 기다릴 초 |
-| `SETTLE_S` | 720 | 마지막 발송 뒤 receipt를 기다리는 최대 시간 |
+| `SETTLE_S` | 720 | 마지막 발송 뒤 receipt를 기다리는 최대 시간. ticket이 하나도 없으면(예: 장애가 끝까지 유지) 이 시간을 다 기다린 뒤 집계한다 |
 
 **mock 장애 설정** (`MOCK_CONFIG`, 실행 중에는 `POST localhost:18089/__perf/config?키=값`)
 | 키 | 기본값 | 뜻 |
@@ -105,11 +106,12 @@ RESTART="kill after-trigger 2" ./run.sh          # F1-a 알림 저장 중
 RESTART="kill after-trigger 10" ./run.sh         # F1-b 큐가 가장 길 때(근사)
 RESTART="kill after-last-send 60" ./run.sh       # F1-c 발송 끝, receipt 확인 전 (L4)
 
-# 유실 재현 — 발송 3회 실패 (L2): 모든 요청이 5xx
-MOCK_CONFIG="rate5xx=1" ./run.sh
+# 유실 재현 — 발송 3회 실패 (L2): 모든 요청이 5xx이다가 트리거 60초 뒤 Expo가 복구된다.
+# 개선 전에는 재시도 3회를 1초 안에 소진해 복구 뒤에도 유실로 남는다. 개선 후에는 복구 뒤 재처리되어 유실 0이어야 한다
+MOCK_CONFIG="rate5xx=1" MOCK_RECOVER="rate5xx=0" MOCK_RECOVER_AFTER_S=60 ./run.sh
 
-# 중복 재현: Expo는 접수했는데 응답이 앱 타임아웃(5초)보다 늦다 → 앱 재시도마다 ticket이 새로 생긴다
-MOCK_CONFIG="rateTimeoutAccepted=1" ./run.sh
+# 중복 재현: Expo는 접수했는데 응답이 앱 타임아웃(5초)보다 늦다 → 앱 재시도마다 ticket이 새로 생긴다. 60초 뒤 정상화
+MOCK_CONFIG="rateTimeoutAccepted=1" MOCK_RECOVER="rateTimeoutAccepted=0" MOCK_RECOVER_AFTER_S=60 ./run.sh
 
 # 유실 재현 — receipt 조기 포기 (L5): receipt가 15분 뒤에 준비된다(Expo 권장 확인 시점)
 MOCK_CONFIG="receiptDelayMs=900000" ./run.sh

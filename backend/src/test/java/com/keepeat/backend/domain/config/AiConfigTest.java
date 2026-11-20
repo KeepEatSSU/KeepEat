@@ -133,6 +133,8 @@ class AiConfigTest {
 
     private static ChatModel mockModel() {
         ChatModel model = mock(ChatModel.class);
+        // Spring AI 2.x ChatClient는 호출마다 chatModel.getOptions()를 복사한다
+        when(model.getOptions()).thenReturn(ChatOptions.builder().build());
         when(model.call(any(Prompt.class)))
                 .thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("ok")))));
         return model;

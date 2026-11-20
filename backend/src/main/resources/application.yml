@@ -21,9 +21,10 @@ spring:
     google:
       genai:
         api-key: ${GEMINI_API_KEY}
-    # OpenAI ChatModel은 AiConfig가 직접 만든다 (starter 미사용)
     openai:
       api-key: ${OPENAI_API_KEY}
+      # OpenAI ChatModel(2.x)은 spring.ai.retry.*를 쓰지 않고 SDK 재시도만 쓴다. 아래 retry와 같은 총 3회(최초 + 재시도 2회)로 맞춘다
+      max-retries: 2
     # transient 오류 내부 재시도: 최초 1회 + 재시도 2회.
     # 기본값(10회, 백오프 최대 3분)은 프론트 polling deadline(2분)과 stale 판정(10분)을 넘길 수 있어 캡핑한다.
     # Spring AI 2.x는 이 값을 RetryPolicy.maxRetries(최초 호출 제외 재시도 횟수)로 쓴다. 1.x의 3과 같은 동작이 2다.

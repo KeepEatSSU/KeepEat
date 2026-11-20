@@ -2,18 +2,16 @@ package com.keepeat.backend.domain.config;
 
 import com.keepeat.backend.domain.config.AiConfig.AiProperties.Feature;
 import com.sun.net.httpserver.HttpServer;
-import io.micrometer.observation.ObservationRegistry;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.retry.NonTransientAiException;
-import org.springframework.ai.retry.RetryUtils;
-import org.springframework.beans.factory.support.DefaultListableBeanFactory;
 import org.springframework.core.io.ByteArrayResource;
-import org.springframework.retry.support.RetryTemplate;
 import org.springframework.util.MimeTypeUtils;
 
 import java.io.IOException;
@@ -27,7 +25,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * AiConfig가 만든 OpenAI ChatModel이 Boot 4 환경에서 요청을 직렬화하고 응답을 읽는지 로컬 stub 서버로 확인한다.
+ * Spring AI starter와 같은 방식으로 만든 OpenAI ChatModel이 AiConfig의 ChatClient를 거쳐 Boot 4 환경에서 요청을 직렬화하고 응답을 읽는지 로컬 stub 서버로 확인한다.
  * 실제 OpenAI는 호출하지 않는다.
  */
 class OpenAiChatModelStubServerTest {
@@ -98,12 +96,13 @@ class OpenAiChatModelStubServerTest {
                 .isInstanceOf(NonTransientAiException.class);
     }
 
-    private OpenAiChatModel openAiChatModel() {
-        return new AiConfig().openAiChatModel(
-                "test-key",
-                "http://127.0.0.1:" + server.getAddress().getPort(),
-                RetryTemplate.builder().maxAttempts(1).build(),
-                RetryUtils.DEFAULT_RESPONSE_ERROR_HANDLER,
-                new DefaultListableBeanFactory().getBeanProvider(ObservationRegistry.class));
+    private ChatModel openAiChatModel() {
+        return OpenAiChatModel.builder()
+                .options(OpenAiChatOptions.builder()
+                        .apiKey("test-key")
+                        .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
+                        .maxRetries(0)
+                        .build())
+                .build();
     }
 }

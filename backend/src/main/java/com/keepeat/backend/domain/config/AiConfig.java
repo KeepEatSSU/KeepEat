@@ -1,20 +1,18 @@
 package com.keepeat.backend.domain.config;
 
-import io.micrometer.observation.ObservationRegistry;
+import com.openai.errors.OpenAIIoException;
+import com.openai.errors.OpenAIServiceException;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.prompt.ChatOptions;
-import org.springframework.ai.openai.OpenAiChatModel;
-import org.springframework.ai.openai.api.OpenAiApi;
-import org.springframework.ai.openai.api.common.OpenAiApiConstants;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.retry.TransientAiException;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.retry.support.RetryTemplate;
-import org.springframework.web.client.ResponseErrorHandler;
 
 import java.util.Map;
 
@@ -35,28 +33,6 @@ public class AiConfig {
     @ConfigurationProperties("app.ai")
     public record AiProperties(Feature ocr, Feature recipe, Feature ingredient) {
         public record Feature(String provider, String model, Double temperature, Integer maxTokens) {}
-    }
-
-    /**
-     * OpenAI ChatModel. Spring AI 1.1.x의 OpenAI starter 자동 설정은 Boot 4에서 옮겨진
-     * RestClientAutoConfiguration/WebClientAutoConfiguration을 참조해 기동에 실패하므로 모델 모듈만 쓰고 여기서 만든다.
-     * 재시도(RetryTemplate)와 오류 분류(ResponseErrorHandler)는 Spring AI 재시도 자동 설정(spring.ai.retry.*)의 빈을 그대로 쓴다.
-     */
-    @Bean
-    public OpenAiChatModel openAiChatModel(@Value("${spring.ai.openai.api-key}") String apiKey,
-                                           @Value("${spring.ai.openai.base-url:" + OpenAiApiConstants.DEFAULT_BASE_URL + "}") String baseUrl,
-                                           RetryTemplate retryTemplate,
-                                           ResponseErrorHandler responseErrorHandler,
-                                           ObjectProvider<ObservationRegistry> observationRegistry) {
-        return OpenAiChatModel.builder()
-                .openAiApi(OpenAiApi.builder()
-                        .apiKey(apiKey)
-                        .baseUrl(baseUrl)
-                        .responseErrorHandler(responseErrorHandler)
-                        .build())
-                .retryTemplate(retryTemplate)
-                .observationRegistry(observationRegistry.getIfUnique(() -> ObservationRegistry.NOOP))
-                .build();
     }
 
     @Bean
@@ -84,12 +60,42 @@ public class AiConfig {
             throw new IllegalStateException("app.ai." + feature + ".provider '" + config.provider()
                     + "'에 해당하는 ChatModel이 없습니다. 사용 가능: " + CHAT_MODEL_BEANS.keySet());
         }
+        if ("openai".equals(config.provider())) {
+            chatModel = translatingOpenAiErrors(chatModel);
+        }
         return ChatClient.builder(chatModel)
                 .defaultOptions(ChatOptions.builder()
                         .model(config.model())
                         .temperature(config.temperature())
-                        .maxTokens(config.maxTokens())
-                        .build())
+                        .maxTokens(config.maxTokens()))
                 .build();
+    }
+
+    /**
+     * Spring AI 2.x의 OpenAiChatModel은 OpenAI SDK 예외를 그대로 던진다. 서비스는 공급자와 무관하게
+     * Transient/NonTransientAiException으로 API 실패를 구분하므로 여기서 바꾼다 (1.x 기본 분류와 같다: 4xx → NonTransient, 그 외 → Transient).
+     * ponytail: call만 감싼다. 스트리밍을 쓰게 되면 stream도 감싼다.
+     */
+    static ChatModel translatingOpenAiErrors(ChatModel delegate) {
+        return new ChatModel() {
+            @Override
+            public ChatResponse call(Prompt prompt) {
+                try {
+                    return delegate.call(prompt);
+                } catch (OpenAIServiceException e) {
+                    if (e.statusCode() >= 400 && e.statusCode() < 500) {
+                        throw new NonTransientAiException(e.getMessage(), e);
+                    }
+                    throw new TransientAiException(e.getMessage(), e);
+                } catch (OpenAIIoException e) {
+                    throw new TransientAiException(e.getMessage(), e);
+                }
+            }
+
+            @Override
+            public ChatOptions getOptions() {
+                return delegate.getOptions();
+            }
+        };
     }
 }

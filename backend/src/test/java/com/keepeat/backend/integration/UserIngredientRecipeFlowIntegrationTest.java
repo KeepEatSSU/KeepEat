@@ -25,6 +25,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.Prompt;
@@ -124,6 +125,8 @@ class UserIngredientRecipeFlowIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        // Spring AI 2.x ChatClient는 호출마다 chatModel.getOptions()를 복사한다. mock은 null을 돌려주므로 기본 옵션을 준다
+        given(openAiChatModel.getOptions()).willReturn(ChatOptions.builder().build());
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();

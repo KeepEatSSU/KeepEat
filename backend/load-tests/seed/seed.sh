@@ -6,9 +6,9 @@ cd "$(dirname "$0")/.."
 
 psql() { docker compose exec -T db psql -U perf -d keepeat -v ON_ERROR_STOP=1 -q "$@"; }
 
-# 마스터 데이터 (S9: perf 단독 프로필이라 data.sql이 자동으로 들어가지 않는다)
+# 마스터 데이터 (perf 프로필은 db/seed를 읽지 않으므로 직접 넣는다)
 if [ "$(psql -tAc 'select count(*) from ingredient')" = "0" ]; then
-    psql < ../src/main/resources/data.sql
+    psql < ../src/main/resources/db/seed/V1_1__master_data.sql
 fi
 
 psql \

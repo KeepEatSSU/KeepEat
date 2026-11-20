@@ -14,7 +14,7 @@
 ## 프로필
 | 프로필 | 스키마 | 비고 |
 |---|---|---|
-| local | `ddl-auto: create` + `data.sql` | Flyway 꺼짐 |
+| local | Flyway 마이그레이션 + 마스터 데이터(`db/seed`) + `validate` | 재시작해도 데이터가 유지된다 |
 | test | Flyway 마이그레이션 + `validate` | 마이그레이션이 빠지면 테스트 실패 |
 | demo / prod | Flyway + `validate` | `update` 금지 |
 | perf | Flyway + 스키마 유지 (단독으로 켬, `load-tests/docker-compose.yml`) | 알림 배치 측정 전용. 재시작 시나리오에서 데이터가 남아야 하므로 local과 섞지 않는다. 정해진 시각 실행을 끄고, Expo 주소를 mock으로 바꾸고, `POST /api/internal/perf/expiry-batch` 트리거와 Prometheus 지표를 연다 |

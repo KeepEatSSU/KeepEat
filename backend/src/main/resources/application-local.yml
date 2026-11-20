@@ -12,4 +12,6 @@ spring:
   # local은 스키마 마이그레이션(db/migration) 뒤에 마스터 데이터(db/seed)를 넣는다. db/seed는 local에서만 쓴다
   flyway:
     enabled: true
+    # 시드가 중간에 실패하면 identity 시퀀스만 앞서가 재시도 때 하드코딩한 FK(category_id=1 등)가 깨진다. V1과 V1.1을 한 트랜잭션으로 묶는다
+    group: true
     locations: classpath:db/migration,classpath:db/seed

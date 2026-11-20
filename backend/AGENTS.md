@@ -9,8 +9,7 @@
 ## 명령어
 - 빌드와 테스트: `./gradlew build`
 - 테스트만: `./gradlew test`
-  - 테스트에는 PostgreSQL `localhost:5432/keepeat_test`(keepeat/keepeat)가 필요하다
-  - 예: `docker run -d --name keepeat-test-db -e POSTGRES_DB=keepeat_test -e POSTGRES_USER=keepeat -e POSTGRES_PASSWORD=keepeat -p 5432:5432 postgres:18`
+  - Docker만 실행 중이면 된다. 테스트 DB(postgres:18)는 Testcontainers가 자동으로 띄우고 끝나면 정리한다
 
 ## 프로필
 | 프로필 | 스키마 | 비고 |

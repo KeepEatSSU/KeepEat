@@ -42,7 +42,7 @@ dependencies {
 	implementation 'io.jsonwebtoken:jjwt-jackson:0.12.6'
 
 	// === AI API 관련 ===
-	implementation platform('org.springframework.ai:spring-ai-bom:1.1.4')
+	implementation platform('org.springframework.ai:spring-ai-bom:2.0.3')
 	implementation 'org.springframework.ai:spring-ai-starter-model-google-genai'
 	implementation 'org.springframework.boot:spring-boot-starter-webflux' // Open AI API
 

@@ -2,6 +2,8 @@ package com.keepeat.backend.domain.user.service;
 
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import com.keepeat.backend.domain.notification.repository.NotificationRepository;
+import com.keepeat.backend.domain.recipe.repository.RecipeGenerationJobRepository;
+import com.keepeat.backend.domain.recipe.repository.RecipeGenerationUsageRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeReactionRepository;
 import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
 import com.keepeat.backend.domain.security.JwtProvider;
@@ -91,6 +93,26 @@ class AppUserServiceTest {
 
     @Mock
     private RecipeReactionRepository recipeReactionRepository;
+
+    @Mock
+    private RecipeGenerationJobRepository recipeGenerationJobRepository;
+
+    @Mock
+    private RecipeGenerationUsageRepository recipeGenerationUsageRepository;
+
+    @Test
+    @DisplayName("회원 탈퇴 시 AI 레시피 생성 기록까지 삭제한다 (#58)")
+    void deleteUser_socialUser_deletesRecipeGenerationRecords() {
+        AppUser user = new AppUser("social", EMAIL, "google", "google-sub", Role.ROLE_USER);
+        given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
+
+        appUserService.deleteUser(USER_ID, null);
+
+        verify(recipeGenerationJobRepository).deleteAllByUserId(USER_ID);
+        verify(recipeGenerationUsageRepository).deleteAllByUserId(USER_ID);
+        verify(userIngredientRepository).deleteAllByUserId(USER_ID);
+        verify(appUserRepository).delete(user);
+    }
 
     @Test
     @DisplayName("password reset request sends only verification code for local user")

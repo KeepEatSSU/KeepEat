@@ -98,4 +98,7 @@ public interface RecipeGenerationJobRepository extends JpaRepository<RecipeGener
             @Param("errorMessage") String errorMessage,
             @Param("today") LocalDate today
     );
+
+    // 회원 탈퇴 시 생성 기록 삭제 (#58)
+    void deleteAllByUserId(Long userId);
 }

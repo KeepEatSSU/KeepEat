@@ -4,6 +4,8 @@ import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import com.keepeat.backend.domain.notification.repository.NotificationRepository;
+import com.keepeat.backend.domain.recipe.repository.RecipeGenerationJobRepository;
+import com.keepeat.backend.domain.recipe.repository.RecipeGenerationUsageRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeReactionRepository;
 import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
 import com.keepeat.backend.domain.security.JwtProvider;
@@ -67,6 +69,8 @@ public class AppUserService {
     private final UserIngredientRepository userIngredientRepository;
     private final UserRecipeRepository userRecipeRepository;
     private final RecipeReactionRepository recipeReactionRepository;
+    private final RecipeGenerationJobRepository recipeGenerationJobRepository;
+    private final RecipeGenerationUsageRepository recipeGenerationUsageRepository;
 
     @Transactional
     public Long signUp(SignUpRequest request) {
@@ -205,6 +209,9 @@ public class AppUserService {
         recipeReactionRepository.deleteAllByAppUserId(userId);
         userRecipeRepository.deleteAllByAppUserId(userId);
         userIngredientRepository.deleteAllByUserId(userId);
+        // 레시피(recipe)는 회원 정보가 없어 공용 레시피로 남고, 생성 기록만 지운다 (#58)
+        recipeGenerationJobRepository.deleteAllByUserId(userId);
+        recipeGenerationUsageRepository.deleteAllByUserId(userId);
         notificationRepository.deleteAllByUserId(userId);
         deviceTokenRepository.deleteAllByUserId(userId);
         userSessionRepository.deleteAllByUserId(userId);

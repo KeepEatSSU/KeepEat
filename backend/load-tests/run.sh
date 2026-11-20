@@ -43,7 +43,7 @@ docker compose --profile tools run --rm \
 START_MS=$(grep -o 'start_ms=[0-9]*' "$DIR/k6.log" | head -1 | cut -d= -f2)
 [ -n "${RESTART_PID:-}" ] && wait "$RESTART_PID"
 
-# 발송이 멈춘 뒤, ticket ok 수와 receipt ok 수가 같아지거나 SETTLE_S가 지날 때까지 기다린다
+# 발송이 멈추고 ticket ok 수와 receipt ok 수가 같아지거나, 마지막 발송 뒤 SETTLE_S가 지날 때까지 기다린다
 LOG=$DIR/mock.jsonl
 last_change=$(now_ms) last=-1
 while :; do
@@ -51,7 +51,10 @@ while :; do
     tickets=$(grep -c '"ev":"ticket".*"outcome":"ok' "$LOG" || true)
     receipts=$(grep '"ev":"receipts"' "$LOG" | grep -o '[0-9a-f]\{8\}-[0-9a-f-]\{27\}' | sort -u | wc -l | tr -d ' ' || true)
     [ "$sends" != "$last" ] && { last=$sends; last_change=$(now_ms); }
-    [ "$tickets" -gt 0 ] && [ "$tickets" = "$receipts" ] && break
+    # 재시도 중인 발송이 남아 있을 수 있으므로 발송이 30초(재시도 3회 × 타임아웃 6초보다 길게) 멈춘 뒤에만 끝낸다.
+    # ponytail: mock에 기록되지 않는 앱 내부 대기(큐)는 못 본다. 근사 조건이다
+    quiet=$(( $(now_ms) - last_change ))
+    [ "$tickets" -gt 0 ] && [ "$tickets" = "$receipts" ] && [ "$quiet" -gt 30000 ] && break
     [ $(( $(now_ms) - last_change )) -gt $(( ${SETTLE_S:-720} * 1000 )) ] && break
     sleep 5
 done

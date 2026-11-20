@@ -33,7 +33,7 @@ load-tests/
 - 로컬 수치는 절대 용량이 아니다. **같은 조건에서 개선 전후를 비교**하는 용도다.
 
 ### 준비
-Docker만 있으면 된다. 측정할 코드로 jar를 만든다(개선 전후를 바꿀 때마다 다시 만든다).
+Docker, JDK 21(`./gradlew`를 호스트에서 실행한다), python3(스크립트가 시각 계산과 요약에 쓴다)가 필요하다. 측정할 코드로 jar를 만든다(개선 전후를 바꿀 때마다 다시 만든다).
 
 ```bash
 cd backend
@@ -89,50 +89,41 @@ RUN_ID=L1-base-1 OPEN_RATE=0.144 MEDIAN_S=420 ./run.sh
 
 만료 토큰은 시드가 토큰 이름에 `expired`를 넣고, mock은 그 토큰에 `DeviceNotRegistered`를 돌려준다.
 
-### 시나리오별 명령 (테스트 격자 v1)
-격자는 실행 전에 고정한 값이다. 각 조합을 3회 반복하고, 편차가 10%를 넘으면 5회 반복한다. 개선 전후를 같은 명령으로 돌린다.
+### 시나리오별 명령
+**지켜야 할 것은 통제 하나다.** 개선 전후를 같은 명령·같은 시드·같은 리소스 제한으로 돌리고, 바뀌는 것은 jar뿐이어야 한다. 로컬은 결과가 흔들리므로 같은 조건을 3회 반복하고, 편차가 10%를 넘으면 5회 반복한다.
+
+시나리오는 두 갈래다.
+- **유실 재현**: 유실 지점(L1~L5)은 코드로 확인한 사실이라 확률을 훑지 않는다. 지점마다 사건이 확실히 일어나는 조합 하나로 재현하고, 개선 뒤 같은 명령으로 유실이 0이 되는지 본다. 장애는 한 번에 하나만 넣는다.
+- **상한**: 배포 사양에서 어디까지 버티는지 단계적으로 올리며 찾는다. 개선안(keyset, 병렬 처리, 풀 크기 등)을 고르는 근거가 된다.
 
 ```bash
-# Load L1 — 기준 / 낮음 / 높음
+# 기준선: Load L1 기준 조합 (가입자 1만, 발송 약 750, 열람 14.4% · 중앙값 7분)
 OPEN_RATE=0.144 MEDIAN_S=420 ./run.sh
-P_REGISTERED=0.3 P_EXPIRING=0.1 P_ALLOW=0.25 P_DDAY=0.1 OPEN_RATE=0.03 MEDIAN_S=2880 ./run.sh
-P_REGISTERED=0.8 P_EXPIRING=0.6 P_ALLOW=0.9 P_DDAY=0.6 OPEN_RATE=0.144 MEDIAN_S=420 ./run.sh
 
-# F1 재시작 — 종료 방식은 stop / kill 둘 다
+# 유실 재현 — 재시작 (L3, L4). 종료 방식은 stop / kill 둘 다
 RESTART="kill after-trigger 2" ./run.sh          # F1-a 알림 저장 중
 RESTART="kill after-trigger 10" ./run.sh         # F1-b 큐가 가장 길 때(근사)
-RESTART="kill after-last-send 60" ./run.sh       # F1-c 마지막 발송 1분 뒤 (5분 뒤는 300)
+RESTART="kill after-last-send 60" ./run.sh       # F1-c 발송 끝, receipt 확인 전 (L4)
 
-# F2 5xx·타임아웃 합계 0.0002 / 0.005 / 0.05. 타임아웃 일부는 접수 후 응답 지연
-#    5xx·타임아웃·접수 후 지연 사이의 분배는 미정이다. 정하면 이 예시를 고친다
-MOCK_CONFIG="rate5xx=0.005" ./run.sh
+# 유실 재현 — 발송 3회 실패 (L2): 모든 요청이 5xx
+MOCK_CONFIG="rate5xx=1" ./run.sh
 
-# F3 Expo 전달 지연 30분 / 3시간 / 10시간 → receipt 지연
-MOCK_CONFIG="receiptDelayMs=1800000" ./run.sh
+# 중복 재현: Expo는 접수했는데 응답이 앱 타임아웃(5초)보다 늦다 → 앱 재시도마다 ticket이 새로 생긴다
+MOCK_CONFIG="rateTimeoutAccepted=1" ./run.sh
 
-# F4 429 유지 1분 / 10분
-MOCK_CONFIG="force429Seconds=60" ./run.sh
-
-# F5 receipt 누락 1% / 10%, receipt 지연 15분 / 30분
-MOCK_CONFIG="receiptMissingRate=0.01" ./run.sh
+# 유실 재현 — receipt 조기 포기 (L5): receipt가 15분 뒤에 준비된다(Expo 권장 확인 시점)
 MOCK_CONFIG="receiptDelayMs=900000" ./run.sh
 
-# F6 DB 중지 10초 / 60초
-RESTART_SERVICE=db DOWN_S=10 RESTART="stop after-trigger 2" ./run.sh
-
-# F7 만료 토큰 5% / 30%
-P_EXPIRED_TOKEN=0.05 ./run.sh
-
-# ST1 발송 규모: 알림 대상(Expo 요청) ≈ USERS × P_REGISTERED × P_EXPIRING × P_ALLOW (기본 비율이면 USERS × 0.075)
+# 상한 — ST1 발송 규모: Expo 요청 ≈ USERS × 0.075 (기본 비율). 500 → 1,000 → 2,000 → 5,000 → 1만 → 5만 → 10만
 USERS=66700 ./run.sh                              # 대상 약 5,000명
 
-# ST3 Expo 꼬리 지연 p99 575 / 1759 / 5000ms
-MOCK_CONFIG="p99Ms=5000" ./run.sh
-
-# ST4 동시 트래픽: 발송은 L1 기준 고정, 열람 14.4% → 100% → 2배 → 5배 → 10배, 지연 1분
+# 상한 — ST4 동시 트래픽: 발송은 기준 조합 고정, 열람 14.4% → 100% → 2배 → 5배 → 10배, 지연 1분
 OPEN_RATE=1 MEDIAN_S=60 ./run.sh
 OPEN_RATE=10 MEDIAN_S=60 ./run.sh
 ```
+
+- receipt가 앱이 조회를 그만둔 뒤(약 10분)에 준비되면, 그 유저는 `unverified_our_side`로 분류된다. Expo는 24시간 안에 조회하라고 권장하므로 이 미도달은 앱의 조기 포기(L5) 탓으로 본다. receipt 지연은 Expo 쪽 사건이지만, 분류는 "앱이 기다렸으면 확인됐는가"를 기준으로 한다.
+- 그 밖의 장애(429 유지, receipt 누락, DB 중지, 만료 토큰, Expo 꼬리 지연)도 같은 변수로 돌릴 수 있다. 위 "mock 장애 설정"과 `RESTART_SERVICE`·`P_EXPIRED_TOKEN`을 참고한다.
 
 Stress 중단 조건: ① 배치 시작 + 3시간 초과 ② 큐 1,000 + 스레드 16개 포화 ③ 오류율 5% 초과(API 포함) ④ 앱 다운·메모리 부족. 하나라도 나오면 다음 단계로 올리지 않는다. ②는 `--profile monitoring`으로 Prometheus를 켜고 `executor_queued_tasks{name="pushExecutor"}`, `executor_active_threads`, `hikaricp_connections_pending` 등으로 본다.
 

@@ -345,24 +345,19 @@ public class ExpoMock {
         });
     }
 
+    // 보간은 결정적이므로 고정된 분위수 입력으로 검사한다(무작위 표본은 p99 위쪽의 가파른 구간 때문에 흔들린다)
     static void selfcheck() {
         Config c = new Config();
-        int n = 200_000;
-        double[] s = new double[n];
-        for (int i = 0; i < n; i++) {
-            s[i] = sampleLatencyMs(c, ThreadLocalRandom.current().nextDouble());
-        }
-        java.util.Arrays.sort(s);
-        double[][] expect = {{0.50, 72}, {0.90, 100}, {0.95, 138}, {0.99, 575}};
+        double[][] expect = {{0.0, 40}, {0.25, 56}, {0.50, 72}, {0.90, 100}, {0.95, 138}, {0.97, 356.5}, {0.99, 575}, {1.0, 1759}};
         for (double[] e : expect) {
-            double got = s[(int) (e[0] * n)];
-            if (Math.abs(got - e[1]) > e[1] * 0.05) {
-                throw new AssertionError("p" + (int) (e[0] * 100) + " expected " + e[1] + " got " + got);
+            double got = sampleLatencyMs(c, e[0]);
+            if (Math.abs(got - e[1]) > 1e-6) {
+                throw new AssertionError("u=" + e[0] + " expected " + e[1] + " got " + got);
             }
-            System.out.printf("p%d = %.1fms (expected %.0f)%n", (int) (e[0] * 100), got, e[1]);
         }
-        if (sampleLatencyMs(c, 1.0) != 1759 || sampleLatencyMs(c, 0.0) != 40) {
-            throw new AssertionError("bounds");
+        c.p99Ms = 5000; // ST3: p99를 올리면 상한도 함께 올라간다
+        if (sampleLatencyMs(c, 0.99) != 5000 || sampleLatencyMs(c, 1.0) != 5000) {
+            throw new AssertionError("p99 override");
         }
         System.out.println("selfcheck ok");
     }

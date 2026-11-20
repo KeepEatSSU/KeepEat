@@ -24,9 +24,14 @@ case $WHEN in
         ;;
     after-last-send)
         last=0 same=0
+        DEADLINE=$(( START_MS + 600000 ))  # 10분 안에 발송이 하나도 없으면 재시작을 건너뛴다
         while [ $same -lt 50 ]; do  # 0.1초 × 50 = 5초
             n=$(grep -c '"ev":"\(send\|ticket\)"' "$DIR/mock.jsonl" || true)
             if [ "$n" -gt 0 ] && [ "$n" = "$last" ]; then same=$((same + 1)); else same=0; last=$n; fi
+            if [ "$n" = "0" ] && [ "$(now_ms)" -gt "$DEADLINE" ]; then
+                log "no send within 600s, restart skipped"
+                exit 0
+            fi
             sleep 0.1
         done
         log "last send detected (sends=$last)"

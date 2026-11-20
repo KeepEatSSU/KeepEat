@@ -1,0 +1,128 @@
+# 소비기한 알림 배치 측정 환경 (#52)
+# 실행 방법은 README.md 참고. 리소스 제한 값은 docs/perf 테스트 격자 v1과 같다.
+#
+# 프로필을 local,perf가 아니라 perf 단독으로 켠다.
+# local은 ddl-auto: create라서 앱이 재시작될 때마다 테이블을 다시 만든다.
+# 그러면 재시작 시나리오(F1)에서 저장된 알림 row가 사라져 측정이 성립하지 않는다.
+# perf 단독이면 기본 설정(Flyway + 스키마 유지)을 따르므로 운영과 같은 스키마로 돈다.
+
+name: keepeat-perf
+
+services:
+  db:
+    image: postgres:18
+    cpus: 1
+    mem_limit: 1g
+    environment:
+      POSTGRES_DB: keepeat
+      POSTGRES_USER: perf
+      POSTGRES_PASSWORD: perf
+    ports:
+      - "${PERF_DB_PORT:-15432}:5432"
+    # tmpfs가 아니라 volume을 쓴다. DB 중지 시나리오(F6)에서 컨테이너를 멈춰도 데이터가 남아야 한다.
+    # 매 실행 초기화는 `docker compose down -v`로 한다.
+    volumes:
+      - db-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U perf -d keepeat"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  mock:
+    # Expo mock (load-tests/mock/ExpoMock.java). 의존성 없는 단일 파일이라 JDK로 소스를 바로 실행한다
+    image: eclipse-temurin:21-jdk-jammy
+    cpus: 1
+    mem_limit: 512m
+    command: ["java", "-XX:MaxRAMPercentage=70", "/mock/ExpoMock.java"]
+    volumes:
+      - ./mock:/mock:ro
+      - ./runs:/runs
+    ports:
+      - "${PERF_MOCK_PORT:-18089}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/__perf/config"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    image: eclipse-temurin:21-jre-jammy
+    cpus: 2
+    mem_limit: 1g
+    depends_on:
+      db:
+        condition: service_healthy
+      mock:
+        condition: service_healthy
+    environment:
+      TZ: Asia/Seoul
+      SPRING_PROFILES_ACTIVE: perf
+      EXPO_MOCK_BASE_URL: http://mock:8080
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: keepeat
+      DB_USER: perf
+      DB_PASSWORD: perf
+      # 배치는 아래 외부 서비스를 쓰지 않는다. 실제 키가 섞이지 않도록 더미 값을 고정한다.
+      # k6가 같은 키로 JWT를 서명한다. 32바이트라 HS256이 된다(jjwt는 키 길이로 알고리즘을 고른다)
+      JWT_SECRET_KEY: perf-only-jwt-secret-32-bytes-ok
+      GEMINI_API_KEY: dummy
+      OPENAI_API_KEY: dummy
+      GOOGLE_CLIENT_ID: dummy
+      GOOGLE_CLIENT_SECRET: dummy
+      OAUTH2_REDIRECT_URI: http://localhost/dummy
+      MAIL_USERNAME: dummy
+      MAIL_PASSWORD: dummy
+      # 메일 health 검사는 더미 계정으로 실제 Gmail SMTP에 접속한다. 측정 중 외부 연결이 생기지 않게 끈다
+      MANAGEMENT_HEALTH_MAIL_ENABLED: "false"
+      # 힙은 컨테이너 메모리의 약 70% (격자 v1: 50~75%)
+      JAVA_TOOL_OPTIONS: -XX:MaxRAMPercentage=70 -Duser.timezone=Asia/Seoul
+    command: ["java", "-jar", "/app/app.jar"]
+    volumes:
+      # ./gradlew bootJar 결과물. README의 준비 단계에서 app.jar로 복사한다.
+      - ../build/libs/app.jar:/app/app.jar:ro
+    ports:
+      - "${PERF_APP_PORT:-18080}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health/readiness"]
+      interval: 5s
+      timeout: 3s
+      start_period: 60s
+      retries: 30
+
+  # 트리거·동시 트래픽 (k6/tap-flow.js). run.sh가 docker compose run으로 실행한다
+  k6:
+    image: grafana/k6:1.0.0
+    profiles: ["tools"]
+    environment:
+      JWT_SECRET: perf-only-jwt-secret-32-bytes-ok
+    volumes:
+      - ./k6:/scripts:ro
+      - ./runs:/runs
+
+  # 흐름 관찰용(E2). 리소스가 앱과 겹치지 않도록 필요할 때만 켠다: --profile monitoring
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=2d
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "${PERF_PROMETHEUS_PORT:-19090}:9090"
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    profiles: ["monitoring"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    ports:
+      - "${PERF_GRAFANA_PORT:-13000}:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  db-data:

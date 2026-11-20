@@ -1,0 +1,9 @@
+global:
+  # 배치가 수십 초 안에 끝날 수 있어 기본 15초보다 촘촘하게 긁는다
+  scrape_interval: 2s
+
+scrape_configs:
+  - job_name: keepeat-perf-app
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['app:8080']

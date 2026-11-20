@@ -1,12 +1,20 @@
 package com.keepeat.backend.domain.config;
 
+import io.micrometer.observation.ObservationRegistry;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.openai.OpenAiChatModel;
+import org.springframework.ai.openai.api.OpenAiApi;
+import org.springframework.ai.openai.api.common.OpenAiApiConstants;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.retry.support.RetryTemplate;
+import org.springframework.web.client.ResponseErrorHandler;
 
 import java.util.Map;
 
@@ -27,6 +35,28 @@ public class AiConfig {
     @ConfigurationProperties("app.ai")
     public record AiProperties(Feature ocr, Feature recipe, Feature ingredient) {
         public record Feature(String provider, String model, Double temperature, Integer maxTokens) {}
+    }
+
+    /**
+     * OpenAI ChatModel. Spring AI 1.1.x의 OpenAI starter 자동 설정은 Boot 4에서 옮겨진
+     * RestClientAutoConfiguration/WebClientAutoConfiguration을 참조해 기동에 실패하므로 모델 모듈만 쓰고 여기서 만든다.
+     * 재시도(RetryTemplate)와 오류 분류(ResponseErrorHandler)는 Spring AI 재시도 자동 설정(spring.ai.retry.*)의 빈을 그대로 쓴다.
+     */
+    @Bean
+    public OpenAiChatModel openAiChatModel(@Value("${spring.ai.openai.api-key}") String apiKey,
+                                           @Value("${spring.ai.openai.base-url:" + OpenAiApiConstants.DEFAULT_BASE_URL + "}") String baseUrl,
+                                           RetryTemplate retryTemplate,
+                                           ResponseErrorHandler responseErrorHandler,
+                                           ObjectProvider<ObservationRegistry> observationRegistry) {
+        return OpenAiChatModel.builder()
+                .openAiApi(OpenAiApi.builder()
+                        .apiKey(apiKey)
+                        .baseUrl(baseUrl)
+                        .responseErrorHandler(responseErrorHandler)
+                        .build())
+                .retryTemplate(retryTemplate)
+                .observationRegistry(observationRegistry.getIfUnique(() -> ObservationRegistry.NOOP))
+                .build();
     }
 
     @Bean

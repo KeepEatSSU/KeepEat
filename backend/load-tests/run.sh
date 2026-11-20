@@ -17,7 +17,8 @@ DIR=runs/$RUN_ID
 APP=localhost:${PERF_APP_PORT:-18080}
 MOCK=localhost:${PERF_MOCK_PORT:-18089}
 # 중간에 끝나도 백그라운드 작업(재시작·장애 해제)이 다음 실행의 컨테이너를 건드리지 않게 정리한다
-trap 'kill $(jobs -p) 2>/dev/null || true' EXIT
+# restart.sh는 종료 신호를 받아도 실행 중인 docker compose 명령이 끝난 뒤 나가므로, 끝날 때까지 기다린다
+trap 'kill $(jobs -p) 2>/dev/null || true; wait' EXIT
 psql() { docker compose exec -T db psql -U perf -d keepeat -v ON_ERROR_STOP=1 -qtA "$@"; }
 now_ms() { python3 -c 'import time; print(int(time.time()*1000))'; }
 
@@ -39,6 +40,7 @@ if [ -n "${MOCK_RECOVER:-}" ]; then
         sleep "${MOCK_RECOVER_AFTER_S:-60}"
         curl -fsS -X POST "$MOCK/__perf/config?$MOCK_RECOVER" >/dev/null
     ) &
+    RECOVER_PID=$!
 fi
 
 if [ -n "${RESTART:-}" ]; then
@@ -51,8 +53,20 @@ docker compose --profile tools run --rm \
     -e USERS_FILE=/runs/$RUN_ID/users.json -e SUMMARY=/runs/$RUN_ID/k6-summary.json \
     -e OPEN_RATE="${OPEN_RATE:-0}" -e MEDIAN_S="${MEDIAN_S:-420}" -e CAP_S="${CAP_S:-10800}" \
     k6 run --quiet /scripts/tap-flow.js 2>&1 | tee "$DIR/k6.log" | grep -E "start_ms=|ERRO|WARN" || true
-START_MS=$(grep -o 'start_ms=[0-9]*' "$DIR/k6.log" | head -1 | cut -d= -f2)
-[ -n "${RESTART_PID:-}" ] && wait "$RESTART_PID"
+START_MS=$(grep -o 'start_ms=[0-9]*' "$DIR/k6.log" | head -1 | cut -d= -f2 || true)
+if [ -z "$START_MS" ]; then
+    echo "k6가 배치를 트리거하지 못했다 ($DIR/k6.log 확인)" >&2
+    exit 1
+fi
+if [ -n "${RESTART_PID:-}" ] && ! wait "$RESTART_PID"; then
+    echo "재시작 작업이 실패했다. 이 실행 결과는 신뢰할 수 없다 ($DIR/restart.log 확인)" >&2
+    exit 1
+fi
+# 복구가 적용된 뒤에 집계하도록 기다린다
+if [ -n "${RECOVER_PID:-}" ] && ! wait "$RECOVER_PID"; then
+    echo "MOCK_RECOVER 요청이 실패했다. 이 실행의 장애 해제 결과는 신뢰할 수 없다" >&2
+    exit 1
+fi
 
 # 발송이 멈추고 ticket ok 수와 receipt ok 수가 같아지거나, 마지막 발송 뒤 SETTLE_S가 지날 때까지 기다린다
 LOG=$DIR/mock.jsonl

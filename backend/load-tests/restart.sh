@@ -7,6 +7,8 @@
 # 환경변수: RESTART_SERVICE 내릴 서비스(기본 app, F6은 db) / DOWN_S 내린 뒤 다시 띄우기까지 기다릴 초(기본 0)
 set -euo pipefail
 cd "$(dirname "$0")"
+# 종료 신호를 받으면 실행 중인 docker compose 명령이 끝난 뒤 나간다(bash는 포그라운드 명령이 끝난 다음 trap을 실행한다)
+trap 'exit 143' TERM
 RUN_ID=$1 HOW=$2 WHEN=$3 SECS=$4
 SVC=${RESTART_SERVICE:-app}
 DIR=runs/$RUN_ID

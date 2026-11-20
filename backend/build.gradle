@@ -50,6 +50,8 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.security:spring-security-test'
+	// 테스트 DB를 Testcontainers로 띄운다 (#54). 버전은 Spring Boot BOM이 관리한다
+	testImplementation 'org.testcontainers:testcontainers-postgresql'
 
 	testCompileOnly 'org.projectlombok:lombok'
 	testAnnotationProcessor 'org.projectlombok:lombok'

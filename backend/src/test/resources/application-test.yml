@@ -1,9 +1,11 @@
 spring:
   datasource:
-    url: jdbc:postgresql://localhost:5432/keepeat_test
+    # Testcontainers JDBC URL: 첫 연결 때 postgres:18 컨테이너를 띄우고 테스트 JVM이 끝나면 정리한다 (#54)
+    # TC_DAEMON=true: 여러 테스트 컨텍스트가 같은 컨테이너를 공유한다
+    url: jdbc:tc:postgresql:18:///keepeat_test?TC_DAEMON=true
     username: keepeat
     password: keepeat
-    driver-class-name: org.postgresql.Driver
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
 
   jpa:
     hibernate:

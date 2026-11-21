@@ -88,6 +88,11 @@ class AiConfigTest {
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> AiConfig.chatClient(chatModels, "recipe", null))
                 .isInstanceOf(IllegalStateException.class);
+        // AI_*_MODEL="" 처럼 빈 문자열로 덮어쓴 경우
+        assertThatThrownBy(() -> AiConfig.chatClient(chatModels, "recipe", new Feature("openai", "", null, null)))
+                .isInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> AiConfig.chatClient(chatModels, "recipe", new Feature(" ", "gpt-4o", null, null)))
+                .isInstanceOf(IllegalStateException.class);
     }
 
     @Test

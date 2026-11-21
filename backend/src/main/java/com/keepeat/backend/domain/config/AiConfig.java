@@ -51,7 +51,7 @@ public class AiConfig {
     }
 
     static ChatClient chatClient(Map<String, ChatModel> chatModels, String feature, AiProperties.Feature config) {
-        if (config == null || config.provider() == null || config.model() == null) {
+        if (config == null || isBlank(config.provider()) || isBlank(config.model())) {
             throw new IllegalStateException("app.ai." + feature + ".provider와 model을 설정해야 합니다.");
         }
         String beanName = CHAT_MODEL_BEANS.get(config.provider());
@@ -69,6 +69,10 @@ public class AiConfig {
                         .temperature(config.temperature())
                         .maxTokens(config.maxTokens()))
                 .build();
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 
     /**

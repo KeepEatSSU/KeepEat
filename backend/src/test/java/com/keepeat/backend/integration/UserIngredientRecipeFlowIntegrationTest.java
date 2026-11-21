@@ -68,7 +68,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+// OCR은 openAiChatModel mock을 쓴다. AI_OCR_PROVIDER 환경변수와 무관하게 고정한다
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = "app.ai.ocr.provider=openai")
 @ActiveProfiles("test")
 @Transactional
 class UserIngredientRecipeFlowIntegrationTest {

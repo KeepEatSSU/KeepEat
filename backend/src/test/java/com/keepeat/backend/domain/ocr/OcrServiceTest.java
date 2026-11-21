@@ -14,12 +14,22 @@ import com.keepeat.backend.domain.ingredient.IngredientStorageRepository;
 import com.keepeat.backend.domain.ocr.dto.OcrParseResponse;
 import com.keepeat.backend.domain.ocr.dto.OcrParseResponse.MatchStatus;
 import com.keepeat.backend.domain.subcategory.SubCategory;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.UserMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -29,17 +39,20 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
 class OcrServiceTest {
 
-    @InjectMocks
     private OcrService ocrService;
 
+    /** 공급자 구현 대신 Spring AI ChatModel을 mock으로 둔다. 실제 AI 호출은 하지 않는다 */
     @Mock
-    private OpenAiClient openAiClient;
+    private ChatModel chatModel;
 
     @Mock
     private IngredientRepository ingredientRepository;
@@ -50,6 +63,14 @@ class OcrServiceTest {
     @Mock
     private IngredientStorageRepository ingredientStorageRepository;
 
+    @BeforeEach
+    void setUp() {
+        // Spring AI 2.x ChatClient는 호출마다 chatModel.getOptions()를 복사한다. mock은 null을 돌려주므로 기본 옵션을 준다
+        lenient().when(chatModel.getOptions()).thenReturn(ChatOptions.builder().build());
+        ocrService = new OcrService(ChatClient.builder(chatModel).build(),
+                ingredientRepository, ingredientAliasRepository, ingredientStorageRepository);
+    }
+
     @Test
     @DisplayName("유효한 이미지 → 매칭된 식재료 후보 반환")
     void parse_validImage_matchedCandidates() {
@@ -57,10 +78,11 @@ class OcrServiceTest {
         MockMultipartFile image = createMockImage();
         Ingredient samgyeopsal = createIngredient(25L, "삼겹살");
 
-        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
-                .willReturn(List.of(
-                        new OpenAiClient.ParsedIngredient("삼겹살 500g", "삼겹살", null, 500.0, "g")
-                ));
+        givenAiReturns("""
+                {"ingredients": [
+                  {"raw": "삼겹살 500g", "name": "삼겹살", "customName": null, "quantity": 500, "unit": "g"}
+                ]}
+                """);
         given(ingredientRepository.findByName("삼겹살"))
                 .willReturn(Optional.of(samgyeopsal));
         given(ingredientStorageRepository.findAllByIngredientId(25L))
@@ -93,10 +115,11 @@ class OcrServiceTest {
         // given
         MockMultipartFile image = createMockImage();
 
-        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
-                .willReturn(List.of(
-                        new OpenAiClient.ParsedIngredient("풀무원 알수없는식재료", "알수없는식재료", "풀무원 알수없는식재료", null, null)
-                ));
+        givenAiReturns("""
+                {"ingredients": [
+                  {"raw": "풀무원 알수없는식재료", "name": "알수없는식재료", "customName": "풀무원 알수없는식재료", "quantity": null, "unit": null}
+                ]}
+                """);
         given(ingredientRepository.findByName("알수없는식재료"))
                 .willReturn(Optional.empty());
         given(ingredientAliasRepository.findByAliasNameIn(List.of("알수없는식재료")))
@@ -123,10 +146,11 @@ class OcrServiceTest {
         Ingredient beef = createIngredient(30L, "소고기");
         IngredientAlias alias = createAlias(beef, "우육");
 
-        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
-                .willReturn(List.of(
-                        new OpenAiClient.ParsedIngredient("우육 500g", "우육", null, 500.0, "g")
-                ));
+        givenAiReturns("""
+                {"ingredients": [
+                  {"raw": "우육 500g", "name": "우육", "customName": null, "quantity": 500, "unit": "g"}
+                ]}
+                """);
         given(ingredientRepository.findByName("우육"))
                 .willReturn(Optional.empty());
         given(ingredientAliasRepository.findByAliasNameIn(List.of("우육")))
@@ -156,10 +180,11 @@ class OcrServiceTest {
         // given
         MockMultipartFile image = createMockImage();
 
-        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
-                .willReturn(List.of(
-                        new OpenAiClient.ParsedIngredient("외계식재료", "외계식재료", null, null, null)
-                ));
+        givenAiReturns("""
+                {"ingredients": [
+                  {"raw": "외계식재료", "name": "외계식재료", "customName": null, "quantity": null, "unit": null}
+                ]}
+                """);
         given(ingredientRepository.findByName("외계식재료"))
                 .willReturn(Optional.empty());
         given(ingredientAliasRepository.findByAliasNameIn(List.of("외계식재료")))
@@ -182,11 +207,12 @@ class OcrServiceTest {
         Ingredient beef = createIngredient(30L, "소고기");
         IngredientAlias alias = createAlias(beef, "우육");
 
-        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
-                .willReturn(List.of(
-                        new OpenAiClient.ParsedIngredient("소고기 200g", "소고기", null, 200.0, "g"),
-                        new OpenAiClient.ParsedIngredient("우육 300g", "우육", null, 300.0, "g")
-                ));
+        givenAiReturns("""
+                {"ingredients": [
+                  {"raw": "소고기 200g", "name": "소고기", "customName": null, "quantity": 200, "unit": "g"},
+                  {"raw": "우육 300g", "name": "우육", "customName": null, "quantity": 300, "unit": "g"}
+                ]}
+                """);
         given(ingredientRepository.findByName("소고기"))
                 .willReturn(Optional.of(beef));
         given(ingredientRepository.findByName("우육"))
@@ -208,13 +234,13 @@ class OcrServiceTest {
     }
 
     @Test
-    @DisplayName("OpenAI API 실패 → OCR_API_FAILURE 예외")
+    @DisplayName("AI API 실패 → OCR_API_FAILURE 예외")
     void parse_apiFailure_throwsException() {
         // given
         MockMultipartFile image = createMockImage();
 
-        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
-                .willThrow(new KeepEatException(ErrorCode.OCR_API_FAILURE));
+        given(chatModel.call(any(Prompt.class)))
+                .willThrow(new NonTransientAiException("401 Unauthorized"));
 
         // when & then
         assertThatThrownBy(() -> ocrService.parse(image))
@@ -229,14 +255,94 @@ class OcrServiceTest {
         // given
         MockMultipartFile image = createMockImage();
 
-        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
-                .willReturn(List.<OpenAiClient.ParsedIngredient>of());
+        givenAiReturns("{\"ingredients\": []}");
 
         // when
         OcrParseResponse response = ocrService.parse(image);
 
         // then
         assertThat(response.candidates()).isEmpty();
+    }
+
+    @Test
+    @DisplayName("AI 요청 → 기존 시스템 프롬프트와 이미지(Media)가 함께 전달된다")
+    void parse_sendsSystemPromptAndImageMedia() {
+        // given
+        MockMultipartFile image = createMockImage();
+        givenAiReturns("{\"ingredients\": []}");
+
+        // when
+        ocrService.parse(image);
+
+        // then
+        ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
+        verify(chatModel).call(captor.capture());
+        Prompt prompt = captor.getValue();
+        assertThat(prompt.getSystemMessage().getText())
+                .contains("식료품 영수증 및 온라인 쇼핑몰 결제내역을 분석하는 파서입니다.");
+        UserMessage userMessage = prompt.getUserMessage();
+        assertThat(userMessage.getMedia()).hasSize(1);
+        assertThat(userMessage.getMedia().get(0).getMimeType().toString()).isEqualTo("image/jpeg");
+        assertThat(userMessage.getMedia().get(0).getDataAsByteArray()).containsExactly(1, 2, 3);
+    }
+
+    @Test
+    @DisplayName("코드 블록으로 감싼 응답 → 파싱 후 정리된다 (빈 이름 제외, 빈 문자열은 null)")
+    void parse_fencedResponse_normalized() {
+        // given
+        MockMultipartFile image = createMockImage();
+        givenAiReturns("""
+                ```json
+                {"ingredients": [
+                  {"raw": " 서울우유 1000ml ", "name": " 우유 ", "customName": " ", "quantity": 1000, "unit": ""},
+                  {"raw": "할인", "name": "", "customName": null, "quantity": null, "unit": null}
+                ]}
+                ```
+                """);
+        given(ingredientRepository.findByName("우유")).willReturn(Optional.empty());
+        given(ingredientAliasRepository.findByAliasNameIn(List.of("우유"))).willReturn(List.of());
+
+        // when
+        OcrParseResponse response = ocrService.parse(image);
+
+        // then
+        assertThat(response.candidates()).hasSize(1);
+        var candidate = response.candidates().get(0);
+        assertThat(candidate.rawName()).isEqualTo("서울우유 1000ml");
+        assertThat(candidate.customName()).isNull();
+        assertThat(candidate.quantity()).isEqualTo(1000.0);
+        assertThat(candidate.unit()).isNull();
+    }
+
+    @Test
+    @DisplayName("JSON이 아닌 응답 → OCR_PARSE_FAILURE 예외")
+    void parse_invalidJson_throwsParseFailure() {
+        // given
+        MockMultipartFile image = createMockImage();
+        givenAiReturns("식재료를 찾을 수 없습니다.");
+
+        // when & then
+        assertThatThrownBy(() -> ocrService.parse(image))
+                .isInstanceOf(KeepEatException.class)
+                .satisfies(e -> assertThat(((KeepEatException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.OCR_PARSE_FAILURE));
+    }
+
+    @Test
+    @DisplayName("허용되지 않은 이미지 형식 → AI 호출 없이 OCR_INVALID_IMAGE 예외")
+    void parse_invalidMimeType_throwsInvalidImage() {
+        MockMultipartFile image = new MockMultipartFile("image", "a.gif", "image/gif", new byte[]{1});
+
+        assertThatThrownBy(() -> ocrService.parse(image))
+                .isInstanceOf(KeepEatException.class)
+                .satisfies(e -> assertThat(((KeepEatException) e).getErrorCode())
+                        .isEqualTo(ErrorCode.OCR_INVALID_IMAGE));
+        verify(chatModel, never()).call(any(Prompt.class));
+    }
+
+    private void givenAiReturns(String content) {
+        given(chatModel.call(any(Prompt.class)))
+                .willReturn(new ChatResponse(List.of(new Generation(new AssistantMessage(content)))));
     }
 
     private MockMultipartFile createMockImage() {

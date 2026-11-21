@@ -21,6 +21,10 @@ spring:
     google:
       genai:
         api-key: ${GEMINI_API_KEY}
+    openai:
+      api-key: ${OPENAI_API_KEY}
+      # OpenAI ChatModel(2.x)은 spring.ai.retry.*를 쓰지 않고 SDK 재시도만 쓴다. 아래 retry와 같은 총 3회(최초 + 재시도 2회)로 맞춘다
+      max-retries: 2
     # transient 오류 내부 재시도: 최초 1회 + 재시도 2회.
     # 기본값(10회, 백오프 최대 3분)은 프론트 polling deadline(2분)과 stale 판정(10분)을 넘길 수 있어 캡핑한다.
     # Spring AI 2.x는 이 값을 RetryPolicy.maxRetries(최초 호출 제외 재시도 횟수)로 쓴다. 1.x의 3과 같은 동작이 2다.
@@ -71,11 +75,23 @@ app:
     expo-receipts-url: https://exp.host/--/api/v2/push/getReceipts
   oauth2:
     redirect-uri: ${OAUTH2_REDIRECT_URI}
-
-openai:
-  api-key: ${OPENAI_API_KEY}
-  model: gpt-4o
-  max-tokens: 1024
+  # 기능별 AI 공급자·모델 (#59). provider: openai | google-genai
+  # 공급자를 바꾸면 해당 공급자의 API 키(OPENAI_API_KEY / GEMINI_API_KEY)가 필요하다
+  ai:
+    ocr:
+      provider: ${AI_OCR_PROVIDER:openai}
+      model: ${AI_OCR_MODEL:gpt-4o}
+      max-tokens: 1024
+    recipe:
+      provider: ${AI_RECIPE_PROVIDER:google-genai}
+      model: ${AI_RECIPE_MODEL:gemini-2.5-pro}
+      temperature: 0.2
+      max-tokens: 8000
+    ingredient:
+      provider: ${AI_INGREDIENT_PROVIDER:google-genai}
+      model: ${AI_INGREDIENT_MODEL:gemini-flash-lite-latest}
+      temperature: 0.1
+      max-tokens: 5000
 
 logging:
   level:

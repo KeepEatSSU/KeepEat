@@ -13,7 +13,6 @@ import com.keepeat.backend.domain.ingredient.IngredientAliasRepository;
 import com.keepeat.backend.domain.ingredient.IngredientRepository;
 import com.keepeat.backend.domain.ingredient.IngredientStorage;
 import com.keepeat.backend.domain.ingredient.IngredientStorageRepository;
-import com.keepeat.backend.domain.ocr.OpenAiClient;
 import com.keepeat.backend.domain.recipe.entity.Recipe;
 import com.keepeat.backend.domain.recipe.entity.RecipeIngredient;
 import com.keepeat.backend.domain.recipe.repository.RecipeRepository;
@@ -24,6 +23,12 @@ import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.chat.prompt.ChatOptions;
+import org.springframework.ai.chat.model.ChatResponse;
+import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -54,7 +59,6 @@ import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.authentication;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
@@ -64,7 +68,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK)
+// OCR은 openAiChatModel mock을 쓴다. AI_OCR_PROVIDER 환경변수와 무관하게 고정한다
+@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK,
+        properties = "app.ai.ocr.provider=openai")
 @ActiveProfiles("test")
 @Transactional
 class UserIngredientRecipeFlowIntegrationTest {
@@ -104,8 +110,9 @@ class UserIngredientRecipeFlowIntegrationTest {
     @PersistenceContext
     private EntityManager entityManager;
 
-    @MockitoBean
-    private OpenAiClient openAiClient;
+    // OCR 기본 공급자(openai)의 ChatModel을 mock으로 바꾼다. 실제 AI 호출은 하지 않는다
+    @MockitoBean(name = "openAiChatModel")
+    private ChatModel openAiChatModel;
 
     @MockitoBean
     private NotificationService notificationService;
@@ -120,6 +127,8 @@ class UserIngredientRecipeFlowIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        // Spring AI 2.x ChatClient는 호출마다 chatModel.getOptions()를 복사한다. mock은 null을 돌려주므로 기본 옵션을 준다
+        given(openAiChatModel.getOptions()).willReturn(ChatOptions.builder().build());
         mockMvc = MockMvcBuilders.webAppContextSetup(context)
                 .apply(SecurityMockMvcConfigurers.springSecurity())
                 .build();
@@ -339,11 +348,13 @@ class UserIngredientRecipeFlowIntegrationTest {
     @Test
     @DisplayName("기능 1 E2E — OCR 별칭 매칭 시 응답은 마스터 식재료 ID/이름으로 치환")
     void ocr_aliasMatch_resolvedToMaster() throws Exception {
-        // OpenAI client stub: 영수증에 "우육 500g" 한 줄이 있다고 가정
-        given(openAiClient.extractIngredients(any(byte[].class), anyString()))
-                .willReturn(List.of(
-                        new OpenAiClient.ParsedIngredient("우육 500g", "우육", null, 500.0, "g")
-                ));
+        // AI 응답 stub: 영수증에 "우육 500g" 한 줄이 있다고 가정
+        given(openAiChatModel.call(any(Prompt.class)))
+                .willReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("""
+                        {"ingredients": [
+                          {"raw": "우육 500g", "name": "우육", "customName": null, "quantity": 500, "unit": "g"}
+                        ]}
+                        """)))));
 
         MockMultipartFile image = new MockMultipartFile(
                 "image", "receipt.jpg", "image/jpeg", new byte[]{1, 2, 3});

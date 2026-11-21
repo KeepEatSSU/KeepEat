@@ -12,6 +12,7 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
 import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
+import org.springframework.ai.google.genai.GoogleGenAiChatOptions;
 import org.springframework.boot.context.properties.bind.Binder;
 import org.springframework.boot.context.properties.source.ConfigurationPropertySources;
 import org.springframework.boot.env.YamlPropertySourceLoader;
@@ -93,6 +94,30 @@ class AiConfigTest {
                 .isInstanceOf(IllegalStateException.class);
         assertThatThrownBy(() -> AiConfig.chatClient(chatModels, "recipe", new Feature(" ", "gpt-4o", null, null)))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    record Sample(String name) {}
+
+    @Test
+    @DisplayName(".entity(...) 호출 → Gemini 요청에 JSON 응답 모드(responseMimeType=application/json)와 스키마가 들어간다")
+    void entityCallEnablesGeminiJsonMode() {
+        ChatModel gemini = mock(ChatModel.class);
+        // 실제 GoogleGenAiChatModel처럼 공급자 전용 옵션을 기본값으로 돌려준다
+        when(gemini.getOptions()).thenReturn(GoogleGenAiChatOptions.builder().build());
+        when(gemini.call(any(Prompt.class)))
+                .thenReturn(new ChatResponse(List.of(new Generation(new AssistantMessage("{\"name\": \"양파\"}")))));
+        ChatClient client = AiConfig.chatClient(Map.of("googleGenAiChatModel", gemini), "recipe",
+                new Feature("google-genai", "gemini-2.5-pro", 0.2, 8000));
+
+        Sample result = client.prompt().user("hi").call().entity(Sample.class);
+
+        ArgumentCaptor<Prompt> captor = ArgumentCaptor.forClass(Prompt.class);
+        verify(gemini).call(captor.capture());
+        GoogleGenAiChatOptions options = (GoogleGenAiChatOptions) captor.getValue().getOptions();
+        assertThat(result).isEqualTo(new Sample("양파"));
+        assertThat(options.getResponseMimeType()).isEqualTo("application/json");
+        assertThat(options.getOutputSchema()).contains("\"name\"");
+        assertThat(options.getModel()).isEqualTo("gemini-2.5-pro");
     }
 
     @Test

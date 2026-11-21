@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.config;
 
 import com.openai.errors.OpenAIIoException;
 import com.openai.errors.OpenAIServiceException;
+import org.springframework.ai.chat.client.AdvisorParams;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -68,6 +69,9 @@ public class AiConfig {
                         .model(config.model())
                         .temperature(config.temperature())
                         .maxTokens(config.maxTokens()))
+                // .entity(...) 호출 시 응답 스키마를 공급자 JSON 모드로 넘긴다
+                // (Gemini: responseMimeType=application/json + responseJsonSchema, OpenAI: response_format json_schema)
+                .defaultAdvisors(AdvisorParams.ENABLE_NATIVE_STRUCTURED_OUTPUT)
                 .build();
     }
 

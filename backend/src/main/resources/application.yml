@@ -23,11 +23,11 @@ spring:
         api-key: ${GEMINI_API_KEY}
     openai:
       api-key: ${OPENAI_API_KEY}
-      # OpenAI ChatModel(2.x)은 spring.ai.retry.*를 쓰지 않고 SDK 재시도만 쓴다. 아래 retry와 같은 총 3회(최초 + 재시도 2회)로 맞춘다
+      # AI 재시도는 SDK 한 곳에서만 한다: 총 3회(최초 + 재시도 2회). Gemini는 AiConfig.MAX_ATTEMPTS로 같은 값을 쓴다 (#67)
       max-retries: 2
-    # transient 오류 내부 재시도: 최초 1회 + 재시도 2회.
-    # 기본값(10회, 백오프 최대 3분)은 프론트 polling deadline(2분)과 stale 판정(10분)을 넘길 수 있어 캡핑한다.
-    # Spring AI 2.x는 이 값을 RetryPolicy.maxRetries(최초 호출 제외 재시도 횟수)로 쓴다. 1.x의 3과 같은 동작이 2다.
+    # Spring AI RetryTemplate(TransientAiException만 재시도). 2.x에서 OpenAI ChatModel은 쓰지 않고, Gemini ChatModel은
+    # SDK 예외를 RuntimeException으로 감싸 던져 실제로 재시도하지 않는다. 이후 버전에서 동작이 바뀌어도 기본값(10회, 백오프 최대 3분)이
+    # 프론트 polling deadline(2분)과 stale 판정(10분)을 넘기지 않도록 상한만 둔다. 2.x는 이 값을 maxRetries(최초 호출 제외)로 쓴다.
     retry:
       max-attempts: 2
       backoff:

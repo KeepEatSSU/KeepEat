@@ -22,6 +22,9 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -50,6 +53,9 @@ class PushReceiptCheckIntegrationTest {
     private static final List<Integer> RECEIPT_REQUEST_SIZES = new CopyOnWriteArrayList<>();
     private static final Pattern ID = Pattern.compile("\"([^\"]+)\"");
     private static final AtomicBoolean RECEIPTS_DOWN = new AtomicBoolean();
+    private static final String TICKET_OK = "{\"data\":{\"status\":\"ok\",\"id\":\"ticket-from-stub\"}}";
+    private static final java.util.concurrent.atomic.AtomicReference<String> SEND_RESPONSE =
+            new java.util.concurrent.atomic.AtomicReference<>(TICKET_OK);
 
     @Autowired
     private ExpoPushService expoPushService;
@@ -65,6 +71,9 @@ class PushReceiptCheckIntegrationTest {
 
     @Autowired
     private AppUserService appUserService;
+
+    @Autowired
+    private TransactionTemplate transactionTemplate;
 
     private Long userId;
 
@@ -86,6 +95,7 @@ class PushReceiptCheckIntegrationTest {
         RECEIPTS.clear();
         RECEIPT_REQUEST_SIZES.clear();
         RECEIPTS_DOWN.set(false);
+        SEND_RESPONSE.set(TICKET_OK);
         userId = appUserRepository.saveAndFlush(
                 new AppUser("social", "push-" + UUID.randomUUID() + "@test.com", "google", "sub-" + UUID.randomUUID(), Role.ROLE_USER)).getId();
     }
@@ -104,6 +114,41 @@ class PushReceiptCheckIntegrationTest {
         assertThat(delivery.getUserId()).isEqualTo(userId);
         assertThat(delivery.getNotificationId()).isEqualTo(42L);
         assertThat(delivery.getNextCheckAt()).isAfterOrEqualTo(before.plus(Duration.ofMinutes(15)));
+    }
+
+    @Test
+    @DisplayName("커밋 후 콜백 안에서 같은 스레드로 발송해도 발송 기록을 저장한다")
+    void ticketIsStoredWhenSentInsideAfterCommit() {
+        transactionTemplate.executeWithoutResult(status -> TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        expoPushService.sendMessage(new PushSendRequest(userId, "ExpoPushToken[after-commit]",
+                                "title", "body", NotificationType.EXPIRY_SOON, 42L));
+                    }
+                }));
+
+        assertThat(pushDeliveryRepository.findAll()).extracting(PushDelivery::getTicketId)
+                .containsExactly("ticket-from-stub");
+    }
+
+    @Test
+    @DisplayName("커밋 후 콜백 안에서 발송해 DeviceNotRegistered를 받아도 기기 토큰을 지운다")
+    void deviceTokenIsDeletedWhenSentInsideAfterCommit() {
+        String token = "ExpoPushToken[gone-after-commit-" + System.nanoTime() + "]";
+        deviceTokenRepository.save(new DeviceToken(userId, token));
+        SEND_RESPONSE.set("{\"data\":{\"status\":\"error\",\"details\":{\"error\":\"DeviceNotRegistered\"}}}");
+
+        transactionTemplate.executeWithoutResult(status -> TransactionSynchronizationManager.registerSynchronization(
+                new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        expoPushService.sendMessage(new PushSendRequest(userId, token, "title", "body",
+                                NotificationType.EXPIRY_SOON, 42L));
+                    }
+                }));
+
+        assertThat(deviceTokenRepository.findAllByUserId(userId)).extracting(DeviceToken::getToken).doesNotContain(token);
     }
 
     @Test
@@ -208,8 +253,7 @@ class PushReceiptCheckIntegrationTest {
     private static HttpServer startExpoStub() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/send", exchange -> respond(exchange,
-                    "{\"data\":{\"status\":\"ok\",\"id\":\"ticket-from-stub\"}}"));
+            server.createContext("/send", exchange -> respond(exchange, SEND_RESPONSE.get()));
             server.createContext("/receipts", exchange -> {
                 if (RECEIPTS_DOWN.get()) {
                     exchange.getRequestBody().readAllBytes();

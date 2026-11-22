@@ -8,7 +8,6 @@ import com.keepeat.backend.domain.notification.entity.PushDeliveryStatus;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import com.keepeat.backend.domain.notification.repository.PushDeliveryRepository;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
@@ -17,6 +16,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
@@ -33,7 +34,6 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ExpoPushService {
 
     private static final int MAX_SEND_ATTEMPTS = 3;
@@ -45,6 +45,15 @@ public class ExpoPushService {
     private final AppUserRepository appUserRepository;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public ExpoPushService(DeviceTokenRepository deviceTokenRepository, PushDeliveryRepository pushDeliveryRepository,
+                           AppUserRepository appUserRepository, PlatformTransactionManager transactionManager) {
+        this.deviceTokenRepository = deviceTokenRepository;
+        this.pushDeliveryRepository = pushDeliveryRepository;
+        this.appUserRepository = appUserRepository;
+        this.transactionTemplate = new TransactionTemplate(transactionManager);
+        this.transactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
     private final RestTemplate restTemplate = createRestTemplate();
 
     // 테스트 환경에서 Expo mock으로 바꿀 수 있도록 설정값으로 둔다 (#51). 기본값은 실제 Expo 주소다.
@@ -177,7 +186,7 @@ public class ExpoPushService {
     private String handleDeliveryError(String token, JsonNode response) {
         String error = response.path("details").path("error").asText("unknown");
         if ("DeviceNotRegistered".equals(error)) {
-            deviceTokenRepository.deleteByToken(token);
+            transactionTemplate.executeWithoutResult(tx -> deviceTokenRepository.deleteByToken(token));
             log.info("만료된 Expo 토큰 제거: token={}", fingerprint(token));
             return error;
         }

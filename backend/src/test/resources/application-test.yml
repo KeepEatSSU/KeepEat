@@ -58,6 +58,10 @@ jwt:
 app:
   oauth2:
     redirect-uri: http://localhost:3000/oauth2/redirect
+  push:
+    expo-push-url: http://127.0.0.1:9/--/api/v2/push/send
+    expo-receipts-url: http://127.0.0.1:9/--/api/v2/push/getReceipts
+    receipt-check-delay-ms: 86400000
 
 management:
   endpoints:

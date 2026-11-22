@@ -3,7 +3,11 @@ package com.keepeat.backend.domain.notification.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.keepeat.backend.domain.notification.dto.PushSendRequest;
+import com.keepeat.backend.domain.notification.entity.PushDelivery;
+import com.keepeat.backend.domain.notification.entity.PushDeliveryStatus;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
+import com.keepeat.backend.domain.notification.repository.PushDeliveryRepository;
+import com.keepeat.backend.domain.user.repository.AppUserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,19 +17,19 @@ import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Duration;
 import java.time.Instant;
-import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -33,11 +37,14 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ExpoPushService {
 
     private static final int MAX_SEND_ATTEMPTS = 3;
-    private static final int MAX_RECEIPT_ATTEMPTS = 10;
+    private static final int RECEIPT_BATCH_SIZE = 1000;
+    private static final Duration RECEIPT_RETENTION = Duration.ofHours(24);
 
     private final DeviceTokenRepository deviceTokenRepository;
+    private final PushDeliveryRepository pushDeliveryRepository;
+    private final AppUserRepository appUserRepository;
+    private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final ConcurrentHashMap<String, PendingReceipt> pendingReceipts = new ConcurrentHashMap<>();
     private final RestTemplate restTemplate = createRestTemplate();
 
     // 테스트 환경에서 Expo mock으로 바꿀 수 있도록 설정값으로 둔다 (#51). 기본값은 실제 Expo 주소다.
@@ -46,6 +53,12 @@ public class ExpoPushService {
 
     @Value("${app.push.expo-receipts-url:https://exp.host/--/api/v2/push/getReceipts}")
     private String expoReceiptsUrl = "https://exp.host/--/api/v2/push/getReceipts";
+
+    @Value("${app.push.receipt-first-check-delay-ms:900000}")
+    private long receiptFirstCheckDelayMs = 900_000;
+
+    @Value("${app.push.receipt-retry-delay-ms:900000}")
+    private long receiptRetryDelayMs = 900_000;
 
     public void sendMessage(PushSendRequest request) {
         for (int attempt = 1; attempt <= MAX_SEND_ATTEMPTS; attempt++) {
@@ -67,53 +80,72 @@ public class ExpoPushService {
         }
     }
 
-    @Scheduled(fixedDelayString = "${app.push.receipt-check-delay-ms:60000}")
+    @Scheduled(fixedDelayString = "${app.push.receipt-check-delay-ms:60000}",
+            initialDelayString = "${app.push.receipt-check-delay-ms:60000}")
     public void checkReceipts() {
-        Instant now = Instant.now();
-        List<String> ids = pendingReceipts.entrySet().stream()
-                .filter(entry -> entry.getValue().nextCheckAt().isBefore(now))
-                .limit(300)
-                .map(Map.Entry::getKey)
-                .toList();
-        if (ids.isEmpty()) {
+        List<PushDelivery> due;
+        do {
+            due = claimDueReceipts(Instant.now());
+            if (!due.isEmpty()) {
+                checkReceipts(due);
+            }
+        } while (due.size() == RECEIPT_BATCH_SIZE);
+    }
+
+    private List<PushDelivery> claimDueReceipts(Instant now) {
+        Instant retryAt = now.plusMillis(receiptRetryDelayMs);
+        return transactionTemplate.execute(status -> {
+            List<PushDelivery> rows = pushDeliveryRepository.lockDueForReceiptCheck(now, RECEIPT_BATCH_SIZE);
+            rows.forEach(row -> row.claimReceiptCheck(retryAt));
+            return rows;
+        });
+    }
+
+    private void checkReceipts(List<PushDelivery> due) {
+        JsonNode data;
+        try {
+            data = post(expoReceiptsUrl, Map.of("ids", due.stream().map(PushDelivery::getTicketId).toList())).path("data");
+        } catch (Exception e) {
+            log.warn("Expo receipt 조회 실패: count={}, cause={}", due.size(), e.getClass().getSimpleName());
+            expire(due.stream().filter(delivery -> isPastRetention(delivery, Instant.now())).toList());
             return;
         }
 
-        try {
-            JsonNode data = post(expoReceiptsUrl, Map.of("ids", ids)).path("data");
-            for (String id : ids) {
-                PendingReceipt pending = pendingReceipts.get(id);
-                if (pending == null) {
-                    continue;
+        Instant now = Instant.now();
+        List<Long> delivered = new ArrayList<>();
+        List<PushDelivery> expired = new ArrayList<>();
+        for (PushDelivery delivery : due) {
+            JsonNode receipt = data.path(delivery.getTicketId());
+            String status = receipt.path("status").asText();
+            if ("ok".equals(status)) {
+                delivered.add(delivery.getId());
+            } else if ("error".equals(status)) {
+                String error = handleDeliveryError(delivery.getToken(), receipt);
+                int finished = pushDeliveryRepository.finish(List.of(delivery.getId()), PushDeliveryStatus.FAILED, error);
+                if (finished == 1 && "MessageRateExceeded".equals(error)) {
+                    sendMessage(new PushSendRequest(delivery.getUserId(), delivery.getToken(), delivery.getTitle(),
+                            delivery.getBody(), delivery.getNotificationType(), delivery.getNotificationId()));
                 }
-                JsonNode receipt = data.path(id);
-                if (receipt.isMissingNode()) {
-                    rescheduleOrDrop(id, pending, now);
-                    continue;
-                }
-
-                String status = receipt.path("status").asText();
-                if ("ok".equals(status)) {
-                    pendingReceipts.remove(id);
-                } else if ("error".equals(status)) {
-                    String error = handleDeliveryError(pending.request().targetToken(), receipt);
-                    pendingReceipts.remove(id);
-                    if ("MessageRateExceeded".equals(error)) {
-                        sendMessage(pending.request());
-                    }
-                } else {
-                    rescheduleOrDrop(id, pending, now);
-                }
+            } else if (isPastRetention(delivery, now)) {
+                expired.add(delivery);
             }
-        } catch (Exception e) {
-            log.warn("Expo receipt 조회 실패: count={}, cause={}", ids.size(), e.getClass().getSimpleName());
-            ids.forEach(id -> {
-                PendingReceipt pending = pendingReceipts.get(id);
-                if (pending != null) {
-                    rescheduleOrDrop(id, pending, now);
-                }
-            });
         }
+        if (!delivered.isEmpty()) {
+            pushDeliveryRepository.finish(delivered, PushDeliveryStatus.DELIVERED, null);
+        }
+        expire(expired);
+    }
+
+    private boolean isPastRetention(PushDelivery delivery, Instant now) {
+        return !delivery.getTicketedAt().plus(RECEIPT_RETENTION).isAfter(now);
+    }
+
+    private void expire(List<PushDelivery> deliveries) {
+        if (deliveries.isEmpty()) {
+            return;
+        }
+        deliveries.forEach(delivery -> log.warn("Expo receipt 확인 만료: token={}", fingerprint(delivery.getToken())));
+        pushDeliveryRepository.finish(deliveries.stream().map(PushDelivery::getId).toList(), PushDeliveryStatus.EXPIRED, null);
     }
 
     private void handleTicketResponse(JsonNode ticket, PushSendRequest request) {
@@ -124,7 +156,11 @@ public class ExpoPushService {
         if ("ok".equals(status)) {
             String ticketId = ticket.path("id").asText(null);
             if (ticketId != null) {
-                pendingReceipts.put(ticketId, new PendingReceipt(request, 0, Instant.now().plusSeconds(30)));
+                Instant now = Instant.now();
+                transactionTemplate.executeWithoutResult(tx -> appUserRepository.findByIdForShare(request.userId())
+                        .ifPresent(user -> pushDeliveryRepository.save(PushDelivery.ticketed(request.userId(),
+                                request.notificationId(), request.targetToken(), request.title(), request.body(),
+                                request.type(), ticketId, now, now.plusMillis(receiptFirstCheckDelayMs)))));
             }
             return;
         }
@@ -147,16 +183,6 @@ public class ExpoPushService {
         }
         log.warn("Expo 푸시 전달 실패: token={}, error={}", fingerprint(token), error);
         return error;
-    }
-
-    private void rescheduleOrDrop(String id, PendingReceipt pending, Instant now) {
-        int attempts = pending.attempts() + 1;
-        if (attempts >= MAX_RECEIPT_ATTEMPTS || pending.nextCheckAt().isBefore(now.minus(1, ChronoUnit.DAYS))) {
-            pendingReceipts.remove(id);
-            log.warn("Expo receipt 확인 만료: token={}", fingerprint(pending.request().targetToken()));
-            return;
-        }
-        pendingReceipts.put(id, new PendingReceipt(pending.request(), attempts, now.plusSeconds(60)));
     }
 
     Map<String, Object> buildPushBody(PushSendRequest request) {
@@ -211,9 +237,6 @@ public class ExpoPushService {
         factory.setConnectTimeout(3_000);
         factory.setReadTimeout(5_000);
         return new RestTemplate(factory);
-    }
-
-    private record PendingReceipt(PushSendRequest request, int attempts, Instant nextCheckAt) {
     }
 
     private static final class RetryablePushException extends RuntimeException {

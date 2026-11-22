@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.user.service;
 
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import com.keepeat.backend.domain.notification.repository.NotificationRepository;
+import com.keepeat.backend.domain.notification.repository.PushDeliveryRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationJobRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationUsageRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeReactionRepository;
@@ -86,6 +87,9 @@ class AppUserServiceTest {
     private NotificationRepository notificationRepository;
 
     @Mock
+    private PushDeliveryRepository pushDeliveryRepository;
+
+    @Mock
     private UserIngredientRepository userIngredientRepository;
 
     @Mock
@@ -104,13 +108,14 @@ class AppUserServiceTest {
     @DisplayName("회원 탈퇴 시 AI 레시피 생성 기록까지 삭제한다 (#58)")
     void deleteUser_socialUser_deletesRecipeGenerationRecords() {
         AppUser user = new AppUser("social", EMAIL, "google", "google-sub", Role.ROLE_USER);
-        given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(appUserRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
 
         appUserService.deleteUser(USER_ID, null);
 
         verify(recipeGenerationJobRepository).deleteAllByUserId(USER_ID);
         verify(recipeGenerationUsageRepository).deleteAllByUserId(USER_ID);
         verify(userIngredientRepository).deleteAllByUserId(USER_ID);
+        verify(pushDeliveryRepository).deleteAllByUserId(USER_ID);
         verify(appUserRepository).delete(user);
     }
 

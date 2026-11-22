@@ -1,6 +1,7 @@
 package com.keepeat.backend.domain.notification.scheduler;
 
 import com.keepeat.backend.domain.notification.repository.NotificationRepository;
+import com.keepeat.backend.domain.notification.repository.PushDeliveryRepository;
 import com.keepeat.backend.domain.user.repository.EmailAuthRepository;
 import com.keepeat.backend.domain.user.repository.OAuthLoginCodeRepository;
 import com.keepeat.backend.domain.user.repository.PasswordResetTokenRepository;
@@ -22,6 +23,7 @@ import java.time.temporal.ChronoUnit;
 public class NotificationRetentionScheduler {
 
     private final NotificationRepository notificationRepository;
+    private final PushDeliveryRepository pushDeliveryRepository;
     private final UserSessionRepository userSessionRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final OAuthLoginCodeRepository oauthLoginCodeRepository;
@@ -33,9 +35,9 @@ public class NotificationRetentionScheduler {
     @Scheduled(cron = "0 30 3 * * *", zone = "Asia/Seoul")
     @Transactional
     public void deleteExpiredHistory() {
-        int deleted = notificationRepository.deleteExpiredBefore(
-                Instant.now().minus(Math.max(1, retentionDays), ChronoUnit.DAYS)
-        );
+        Instant cutoff = Instant.now().minus(Math.max(1, retentionDays), ChronoUnit.DAYS);
+        int deleted = notificationRepository.deleteExpiredBefore(cutoff);
+        pushDeliveryRepository.deleteCreatedBefore(cutoff);
         if (deleted > 0) {
             log.info("오래된 알림 기록 정리 완료: count={}", deleted);
         }

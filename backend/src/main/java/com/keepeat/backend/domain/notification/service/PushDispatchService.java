@@ -24,7 +24,7 @@ public class PushDispatchService {
         List<DeviceToken> tokens = deviceTokenRepository.findAllByUserId(userId);
         for (DeviceToken token : tokens) {
             try {
-                expoPushService.sendMessage(new PushSendRequest(token.getToken(), title, body, type, notificationId));
+                expoPushService.sendMessage(new PushSendRequest(userId, token.getToken(), title, body, type, notificationId));
             } catch (Exception e) {
                 log.warn("푸시 비동기 처리 실패: userId={}, cause={}", userId, e.getClass().getSimpleName());
             }

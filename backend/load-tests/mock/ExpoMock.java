@@ -38,7 +38,7 @@ public class ExpoMock {
 
     // ---------- 지연 분포: 실측 분위수 사이 선형 보간 (E4) ----------
     // Knock 실측 p50 72 / p90 100 / p95 138 / p99 575ms.
-    // ponytail: p0 40ms와 상한 1,759ms(하루 최고 p99)는 실측이 없어 정한 가정값이다.
+    // p0 40ms와 상한 1,759ms(하루 최고 p99)는 실측이 없어 정한 가정값이다.
     static final double[] Q = {0.0, 0.50, 0.90, 0.95, 0.99, 1.0};
 
     static double sampleLatencyMs(Config c, double u) {
@@ -136,7 +136,7 @@ public class ExpoMock {
     }
 
     // ---------- 요청 파싱 ----------
-    // ponytail: JSON 라이브러리 없이 정규식으로 뽑는다. 앱이 보내는 형식(to, data.notificationId)이 고정이라 충분하다.
+    // JSON 라이브러리 없이 정규식으로 뽑는다. 앱이 보내는 형식(to, data.notificationId)이 고정이라 충분하다.
     // 배열 요청이면 to와 notificationId를 등장 순서로 짝짓는다.
     static final Pattern TO = Pattern.compile("\"to\"\\s*:\\s*\"([^\"]*)\"");
     static final Pattern NID = Pattern.compile("\"notificationId\"\\s*:\\s*(\\d+)");

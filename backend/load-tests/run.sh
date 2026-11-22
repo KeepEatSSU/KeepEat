@@ -77,7 +77,6 @@ while :; do
     receipts=$(grep '"ev":"receipts"' "$LOG" | grep -o '[0-9a-f]\{8\}-[0-9a-f-]\{27\}' | sort -u | wc -l | tr -d ' ' || true)
     [ "$sends" != "$last" ] && { last=$sends; last_change=$(now_ms); }
     # 재시도 중인 발송이 남아 있을 수 있으므로 발송이 30초(재시도 3회 × 타임아웃 6초보다 길게) 멈춘 뒤에만 끝낸다.
-    # mock에 기록되지 않는 앱 내부 대기(큐)는 못 본다. 근사 조건이다
     quiet=$(( $(now_ms) - last_change ))
     [ "$tickets" -gt 0 ] && [ "$tickets" = "$receipts" ] && [ "$quiet" -gt 30000 ] && break
     [ $(( $(now_ms) - last_change )) -gt $(( ${SETTLE_S:-720} * 1000 )) ] && break

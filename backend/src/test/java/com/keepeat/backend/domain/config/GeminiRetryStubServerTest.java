@@ -27,11 +27,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/**
- * AiConfig의 Gemini Client가 Spring AI 재시도와 합쳐도 전체 HTTP 요청을 MAX_ATTEMPTS(3회) 안으로 제한하고,
- * SDK 예외를 서비스가 구분하는 Transient/NonTransientAiException으로 바꾸는지 로컬 stub 서버로 확인한다 (#67).
- * 자동 설정 기본 Client는 같은 503에 5회 요청하고 RuntimeException을 던졌다.
- */
 class GeminiRetryStubServerTest {
 
     private HttpServer server;
@@ -83,7 +78,6 @@ class GeminiRetryStubServerTest {
     private ChatClient recipeClient() {
         Client client = AiConfig.geminiClient("test-key",
                 HttpOptions.builder().baseUrl("http://127.0.0.1:" + server.getAddress().getPort()));
-        // 자동 설정(SpringAiRetryAutoConfiguration)과 같은 정책. 대기만 줄였다
         RetryTemplate retry = new RetryTemplate(RetryPolicy.builder().maxRetries(2)
                 .includes(TransientAiException.class, ResourceAccessException.class)
                 .delay(Duration.ofMillis(10)).build());

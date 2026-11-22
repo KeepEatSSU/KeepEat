@@ -108,7 +108,7 @@ class AppUserServiceTest {
     @DisplayName("회원 탈퇴 시 AI 레시피 생성 기록까지 삭제한다 (#58)")
     void deleteUser_socialUser_deletesRecipeGenerationRecords() {
         AppUser user = new AppUser("social", EMAIL, "google", "google-sub", Role.ROLE_USER);
-        given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(appUserRepository.findByIdForUpdate(USER_ID)).willReturn(Optional.of(user));
 
         appUserService.deleteUser(USER_ID, null);
 

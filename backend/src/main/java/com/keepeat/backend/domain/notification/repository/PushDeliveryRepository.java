@@ -25,7 +25,10 @@ public interface PushDeliveryRepository extends JpaRepository<PushDelivery, Long
 
     @Modifying
     @Transactional
-    @Query("UPDATE PushDelivery d SET d.status = :status, d.lastError = :error, d.nextCheckAt = null WHERE d.id IN :ids")
+    @Query("""
+            UPDATE PushDelivery d SET d.status = :status, d.lastError = :error, d.nextCheckAt = null
+            WHERE d.id IN :ids AND d.status = com.keepeat.backend.domain.notification.entity.PushDeliveryStatus.CHECKING
+            """)
     int finish(@Param("ids") Collection<Long> ids, @Param("status") PushDeliveryStatus status, @Param("error") String error);
 
     @Modifying

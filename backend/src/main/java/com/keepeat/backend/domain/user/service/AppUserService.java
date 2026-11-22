@@ -197,7 +197,8 @@ public class AppUserService {
 
     @Transactional
     public void deleteUser(Long userId, UserDeleteRequest request) {
-        AppUser user = findActiveUser(userId);
+        AppUser user = appUserRepository.findByIdForUpdate(userId)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.USER_NOT_FOUND));
         if (LOCAL_PROVIDER.equals(user.getProvider())) {
             if (request == null || request.password() == null || request.password().isBlank()) {
                 throw new IllegalArgumentException("탈퇴를 위해서는 현재 비밀번호 입력이 필요합니다.");

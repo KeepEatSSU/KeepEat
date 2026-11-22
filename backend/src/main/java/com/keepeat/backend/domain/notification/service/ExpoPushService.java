@@ -7,6 +7,7 @@ import com.keepeat.backend.domain.notification.entity.PushDelivery;
 import com.keepeat.backend.domain.notification.entity.PushDeliveryStatus;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import com.keepeat.backend.domain.notification.repository.PushDeliveryRepository;
+import com.keepeat.backend.domain.user.repository.AppUserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -41,6 +42,7 @@ public class ExpoPushService {
 
     private final DeviceTokenRepository deviceTokenRepository;
     private final PushDeliveryRepository pushDeliveryRepository;
+    private final AppUserRepository appUserRepository;
     private final TransactionTemplate transactionTemplate;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestTemplate restTemplate = createRestTemplate();
@@ -78,7 +80,8 @@ public class ExpoPushService {
         }
     }
 
-    @Scheduled(fixedDelayString = "${app.push.receipt-check-delay-ms:60000}")
+    @Scheduled(fixedDelayString = "${app.push.receipt-check-delay-ms:60000}",
+            initialDelayString = "${app.push.receipt-check-delay-ms:60000}")
     public void checkReceipts() {
         List<PushDelivery> due;
         do {
@@ -104,12 +107,13 @@ public class ExpoPushService {
             data = post(expoReceiptsUrl, Map.of("ids", due.stream().map(PushDelivery::getTicketId).toList())).path("data");
         } catch (Exception e) {
             log.warn("Expo receipt 조회 실패: count={}, cause={}", due.size(), e.getClass().getSimpleName());
+            expire(due.stream().filter(delivery -> isPastRetention(delivery, Instant.now())).toList());
             return;
         }
 
         Instant now = Instant.now();
         List<Long> delivered = new ArrayList<>();
-        List<Long> expired = new ArrayList<>();
+        List<PushDelivery> expired = new ArrayList<>();
         for (PushDelivery delivery : due) {
             JsonNode receipt = data.path(delivery.getTicketId());
             String status = receipt.path("status").asText();
@@ -117,22 +121,31 @@ public class ExpoPushService {
                 delivered.add(delivery.getId());
             } else if ("error".equals(status)) {
                 String error = handleDeliveryError(delivery.getToken(), receipt);
-                pushDeliveryRepository.finish(List.of(delivery.getId()), PushDeliveryStatus.FAILED, error);
-                if ("MessageRateExceeded".equals(error)) {
+                int finished = pushDeliveryRepository.finish(List.of(delivery.getId()), PushDeliveryStatus.FAILED, error);
+                if (finished == 1 && "MessageRateExceeded".equals(error)) {
                     sendMessage(new PushSendRequest(delivery.getUserId(), delivery.getToken(), delivery.getTitle(),
                             delivery.getBody(), delivery.getNotificationType(), delivery.getNotificationId()));
                 }
-            } else if (!delivery.getTicketedAt().plus(RECEIPT_RETENTION).isAfter(now)) {
-                expired.add(delivery.getId());
-                log.warn("Expo receipt 확인 만료: token={}", fingerprint(delivery.getToken()));
+            } else if (isPastRetention(delivery, now)) {
+                expired.add(delivery);
             }
         }
         if (!delivered.isEmpty()) {
             pushDeliveryRepository.finish(delivered, PushDeliveryStatus.DELIVERED, null);
         }
-        if (!expired.isEmpty()) {
-            pushDeliveryRepository.finish(expired, PushDeliveryStatus.EXPIRED, null);
+        expire(expired);
+    }
+
+    private boolean isPastRetention(PushDelivery delivery, Instant now) {
+        return !delivery.getTicketedAt().plus(RECEIPT_RETENTION).isAfter(now);
+    }
+
+    private void expire(List<PushDelivery> deliveries) {
+        if (deliveries.isEmpty()) {
+            return;
         }
+        deliveries.forEach(delivery -> log.warn("Expo receipt 확인 만료: token={}", fingerprint(delivery.getToken())));
+        pushDeliveryRepository.finish(deliveries.stream().map(PushDelivery::getId).toList(), PushDeliveryStatus.EXPIRED, null);
     }
 
     private void handleTicketResponse(JsonNode ticket, PushSendRequest request) {
@@ -144,9 +157,10 @@ public class ExpoPushService {
             String ticketId = ticket.path("id").asText(null);
             if (ticketId != null) {
                 Instant now = Instant.now();
-                pushDeliveryRepository.save(PushDelivery.ticketed(request.userId(), request.notificationId(),
-                        request.targetToken(), request.title(), request.body(), request.type(), ticketId, now,
-                        now.plusMillis(receiptFirstCheckDelayMs)));
+                transactionTemplate.executeWithoutResult(tx -> appUserRepository.findByIdForShare(request.userId())
+                        .ifPresent(user -> pushDeliveryRepository.save(PushDelivery.ticketed(request.userId(),
+                                request.notificationId(), request.targetToken(), request.title(), request.body(),
+                                request.type(), ticketId, now, now.plusMillis(receiptFirstCheckDelayMs)))));
             }
             return;
         }

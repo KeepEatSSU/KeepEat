@@ -8,6 +8,10 @@ import com.keepeat.backend.domain.notification.entity.PushDeliveryStatus;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import com.keepeat.backend.domain.notification.repository.PushDeliveryRepository;
 import com.keepeat.backend.domain.notification.service.ExpoPushService;
+import com.keepeat.backend.domain.user.entity.AppUser;
+import com.keepeat.backend.domain.user.entity.Role;
+import com.keepeat.backend.domain.user.repository.AppUserRepository;
+import com.keepeat.backend.domain.user.service.AppUserService;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,6 +35,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,6 +49,7 @@ class PushReceiptCheckIntegrationTest {
     private static final Map<String, String> RECEIPTS = new ConcurrentHashMap<>();
     private static final List<Integer> RECEIPT_REQUEST_SIZES = new CopyOnWriteArrayList<>();
     private static final Pattern ID = Pattern.compile("\"([^\"]+)\"");
+    private static final AtomicBoolean RECEIPTS_DOWN = new AtomicBoolean();
 
     @Autowired
     private ExpoPushService expoPushService;
@@ -52,6 +59,14 @@ class PushReceiptCheckIntegrationTest {
 
     @Autowired
     private DeviceTokenRepository deviceTokenRepository;
+
+    @Autowired
+    private AppUserRepository appUserRepository;
+
+    @Autowired
+    private AppUserService appUserService;
+
+    private Long userId;
 
     @DynamicPropertySource
     static void expoUrls(DynamicPropertyRegistry registry) {
@@ -70,6 +85,9 @@ class PushReceiptCheckIntegrationTest {
         pushDeliveryRepository.deleteAll();
         RECEIPTS.clear();
         RECEIPT_REQUEST_SIZES.clear();
+        RECEIPTS_DOWN.set(false);
+        userId = appUserRepository.saveAndFlush(
+                new AppUser("social", "push-" + UUID.randomUUID() + "@test.com", "google", "sub-" + UUID.randomUUID(), Role.ROLE_USER)).getId();
     }
 
     @Test
@@ -77,13 +95,13 @@ class PushReceiptCheckIntegrationTest {
     void ticketIsStoredInDb() {
         Instant before = Instant.now();
 
-        expoPushService.sendMessage(new PushSendRequest(7L, "ExpoPushToken[a]", "title", "body",
+        expoPushService.sendMessage(new PushSendRequest(userId, "ExpoPushToken[a]", "title", "body",
                 NotificationType.EXPIRY_SOON, 42L));
 
         PushDelivery delivery = pushDeliveryRepository.findAll().get(0);
         assertThat(delivery.getStatus()).isEqualTo(PushDeliveryStatus.CHECKING);
         assertThat(delivery.getTicketId()).isEqualTo("ticket-from-stub");
-        assertThat(delivery.getUserId()).isEqualTo(7L);
+        assertThat(delivery.getUserId()).isEqualTo(userId);
         assertThat(delivery.getNotificationId()).isEqualTo(42L);
         assertThat(delivery.getNextCheckAt()).isAfterOrEqualTo(before.plus(Duration.ofMinutes(15)));
     }
@@ -127,8 +145,8 @@ class PushReceiptCheckIntegrationTest {
     @DisplayName("receipt가 DeviceNotRegistered면 실패로 기록하고 기기 토큰을 지운다")
     void deviceNotRegisteredFailsAndDeletesToken() {
         String token = "ExpoPushToken[gone-" + System.nanoTime() + "]";
-        deviceTokenRepository.save(new DeviceToken(7L, token));
-        PushDelivery delivery = PushDelivery.ticketed(7L, 1L, token, "title", "body", NotificationType.EXPIRY_SOON,
+        deviceTokenRepository.save(new DeviceToken(userId, token));
+        PushDelivery delivery = PushDelivery.ticketed(userId, 1L, token, "title", "body", NotificationType.EXPIRY_SOON,
                 "gone", Instant.now().minusSeconds(60), Instant.now().minusSeconds(1));
         pushDeliveryRepository.save(delivery);
         RECEIPTS.put("gone", "{\"status\":\"error\",\"details\":{\"error\":\"DeviceNotRegistered\"}}");
@@ -138,11 +156,52 @@ class PushReceiptCheckIntegrationTest {
         PushDelivery after = pushDeliveryRepository.findById(delivery.getId()).orElseThrow();
         assertThat(after.getStatus()).isEqualTo(PushDeliveryStatus.FAILED);
         assertThat(after.getLastError()).isEqualTo("DeviceNotRegistered");
-        assertThat(deviceTokenRepository.findAllByUserId(7L)).extracting(DeviceToken::getToken).doesNotContain(token);
+        assertThat(deviceTokenRepository.findAllByUserId(userId)).extracting(DeviceToken::getToken).doesNotContain(token);
     }
 
-    private static PushDelivery due(String ticketId, Instant ticketedAt) {
-        return PushDelivery.ticketed(7L, 1L, "ExpoPushToken[" + ticketId + "]", "title", "body",
+    @Test
+    @DisplayName("receipt 조회가 실패해도 24시간이 지난 행은 만료하고, 나머지는 확인 중으로 남긴다")
+    void lookupFailureStillExpiresOldRows() {
+        Instant now = Instant.now();
+        PushDelivery fresh = pushDeliveryRepository.save(due("fresh-down", now.minus(Duration.ofMinutes(20))));
+        PushDelivery old = pushDeliveryRepository.save(due("old-down", now.minus(Duration.ofHours(25))));
+        RECEIPTS_DOWN.set(true);
+
+        expoPushService.checkReceipts();
+
+        assertThat(pushDeliveryRepository.findById(fresh.getId()).orElseThrow().getStatus())
+                .isEqualTo(PushDeliveryStatus.CHECKING);
+        assertThat(pushDeliveryRepository.findById(old.getId()).orElseThrow().getStatus())
+                .isEqualTo(PushDeliveryStatus.EXPIRED);
+    }
+
+    @Test
+    @DisplayName("이미 끝난 발송 기록은 다시 완료 처리되지 않는다")
+    void finishedRowIsNotFinishedTwice() {
+        PushDelivery delivery = pushDeliveryRepository.save(due("twice", Instant.now()));
+
+        int first = pushDeliveryRepository.finish(List.of(delivery.getId()), PushDeliveryStatus.FAILED, "MessageRateExceeded");
+        int second = pushDeliveryRepository.finish(List.of(delivery.getId()), PushDeliveryStatus.FAILED, "MessageRateExceeded");
+
+        assertThat(first).isEqualTo(1);
+        assertThat(second).isZero();
+    }
+
+    @Test
+    @DisplayName("사용자가 삭제되면 발송 기록도 지워지고, 삭제된 사용자의 발송 기록은 저장되지 않는다")
+    void deletedUserHasNoDeliveries() {
+        pushDeliveryRepository.save(due("bye", Instant.now()));
+
+        appUserService.deleteUser(userId, null);
+
+        assertThat(pushDeliveryRepository.findAll()).isEmpty();
+        expoPushService.sendMessage(new PushSendRequest(userId, "ExpoPushToken[late]", "title", "body",
+                NotificationType.EXPIRY_SOON, 42L));
+        assertThat(pushDeliveryRepository.findAll()).isEmpty();
+    }
+
+    private PushDelivery due(String ticketId, Instant ticketedAt) {
+        return PushDelivery.ticketed(userId, 1L, "ExpoPushToken[" + ticketId + "]", "title", "body",
                 NotificationType.EXPIRY_SOON, ticketId, ticketedAt, Instant.now().minusSeconds(1));
     }
 
@@ -152,6 +211,12 @@ class PushReceiptCheckIntegrationTest {
             server.createContext("/send", exchange -> respond(exchange,
                     "{\"data\":{\"status\":\"ok\",\"id\":\"ticket-from-stub\"}}"));
             server.createContext("/receipts", exchange -> {
+                if (RECEIPTS_DOWN.get()) {
+                    exchange.getRequestBody().readAllBytes();
+                    exchange.sendResponseHeaders(503, -1);
+                    exchange.close();
+                    return;
+                }
                 String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
                 StringBuilder data = new StringBuilder();
                 int asked = 0;

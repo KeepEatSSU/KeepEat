@@ -1,5 +1,10 @@
 package com.keepeat.backend.domain.config;
 
+import com.google.genai.Client;
+import com.google.genai.errors.ApiException;
+import com.google.genai.errors.GenAiIOException;
+import com.google.genai.types.HttpOptions;
+import com.google.genai.types.HttpRetryOptions;
 import com.openai.errors.OpenAIIoException;
 import com.openai.errors.OpenAIServiceException;
 import org.springframework.ai.chat.client.AdvisorParams;
@@ -10,6 +15,7 @@ import org.springframework.ai.chat.prompt.ChatOptions;
 import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.ai.retry.NonTransientAiException;
 import org.springframework.ai.retry.TransientAiException;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -34,6 +40,20 @@ public class AiConfig {
     @ConfigurationProperties("app.ai")
     public record AiProperties(Feature ocr, Feature recipe, Feature ingredient) {
         public record Feature(String provider, String model, Double temperature, Integer maxTokens) {}
+    }
+
+    static final int MAX_ATTEMPTS = 3;
+
+    @Bean
+    public Client googleGenAiClient(@Value("${spring.ai.google.genai.api-key}") String apiKey) {
+        return geminiClient(apiKey, HttpOptions.builder());
+    }
+
+    static Client geminiClient(String apiKey, HttpOptions.Builder httpOptions) {
+        return Client.builder()
+                .apiKey(apiKey)
+                .httpOptions(httpOptions.retryOptions(HttpRetryOptions.builder().attempts(MAX_ATTEMPTS)).build())
+                .build();
     }
 
     @Bean
@@ -61,10 +81,7 @@ public class AiConfig {
             throw new IllegalStateException("app.ai." + feature + ".provider '" + config.provider()
                     + "'에 해당하는 ChatModel이 없습니다. 사용 가능: " + CHAT_MODEL_BEANS.keySet());
         }
-        if ("openai".equals(config.provider())) {
-            chatModel = translatingOpenAiErrors(chatModel);
-        }
-        return ChatClient.builder(chatModel)
+        return ChatClient.builder(translatingAiErrors(chatModel))
                 .defaultOptions(ChatOptions.builder()
                         .model(config.model())
                         .temperature(config.temperature())
@@ -75,28 +92,39 @@ public class AiConfig {
                 .build();
     }
 
+    static RuntimeException translate(RuntimeException e) {
+        for (Throwable t = e; t != null; t = t.getCause()) {
+            if (t instanceof OpenAIServiceException ex) {
+                return byStatus(ex.statusCode(), e);
+            }
+            if (t instanceof ApiException ex) {
+                return byStatus(ex.code(), e);
+            }
+            if (t instanceof OpenAIIoException || t instanceof GenAiIOException) {
+                return new TransientAiException(e.getMessage(), e);
+            }
+        }
+        return e;
+    }
+
+    private static RuntimeException byStatus(int status, RuntimeException e) {
+        return status >= 400 && status < 500
+                ? new NonTransientAiException(e.getMessage(), e)
+                : new TransientAiException(e.getMessage(), e);
+    }
+
     private static boolean isBlank(String value) {
         return value == null || value.isBlank();
     }
 
-    /**
-     * Spring AI 2.x의 OpenAiChatModel은 OpenAI SDK 예외를 그대로 던진다. 서비스는 공급자와 무관하게
-     * Transient/NonTransientAiException으로 API 실패를 구분하므로 여기서 바꾼다 (1.x 기본 분류와 같다: 4xx → NonTransient, 그 외 → Transient).
-     * ponytail: call만 감싼다. 스트리밍을 쓰게 되면 stream도 감싼다.
-     */
-    static ChatModel translatingOpenAiErrors(ChatModel delegate) {
+    static ChatModel translatingAiErrors(ChatModel delegate) {
         return new ChatModel() {
             @Override
             public ChatResponse call(Prompt prompt) {
                 try {
                     return delegate.call(prompt);
-                } catch (OpenAIServiceException e) {
-                    if (e.statusCode() >= 400 && e.statusCode() < 500) {
-                        throw new NonTransientAiException(e.getMessage(), e);
-                    }
-                    throw new TransientAiException(e.getMessage(), e);
-                } catch (OpenAIIoException e) {
-                    throw new TransientAiException(e.getMessage(), e);
+                } catch (RuntimeException e) {
+                    throw translate(e);
                 }
             }
 

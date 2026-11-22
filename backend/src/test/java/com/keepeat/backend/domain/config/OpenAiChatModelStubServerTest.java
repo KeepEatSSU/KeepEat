@@ -11,6 +11,7 @@ import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.openai.OpenAiChatModel;
 import org.springframework.ai.openai.OpenAiChatOptions;
 import org.springframework.ai.retry.NonTransientAiException;
+import org.springframework.ai.retry.TransientAiException;
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.util.MimeTypeUtils;
 
@@ -19,6 +20,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -33,6 +35,7 @@ class OpenAiChatModelStubServerTest {
     private HttpServer server;
     private final AtomicReference<String> requestBody = new AtomicReference<>();
     private final AtomicReference<String> authorization = new AtomicReference<>();
+    private final AtomicInteger requests = new AtomicInteger();
     private volatile int status = 200;
     private volatile String responseBody;
 
@@ -40,6 +43,7 @@ class OpenAiChatModelStubServerTest {
     void startServer() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         server.createContext("/v1/chat/completions", exchange -> {
+            requests.incrementAndGet();
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             authorization.set(exchange.getRequestHeaders().getFirst("Authorization"));
             byte[] body = responseBody.getBytes(StandardCharsets.UTF_8);
@@ -96,12 +100,29 @@ class OpenAiChatModelStubServerTest {
                 .isInstanceOf(NonTransientAiException.class);
     }
 
+    @Test
+    @DisplayName("503 → 운영 설정(max-retries 2)으로 전체 3회 요청 후 TransientAiException (#67)")
+    void serverErrorIsRetriedUpToMaxAttempts() {
+        status = 503;
+        responseBody = "{\"error\": {\"message\": \"overloaded\"}}";
+        ChatClient client = AiConfig.chatClient(Map.of("openAiChatModel", openAiChatModel(AiConfig.MAX_ATTEMPTS - 1)), "recipe",
+                new Feature("openai", "gpt-4o", 0.2, 8000));
+
+        assertThatThrownBy(() -> client.prompt().user("hi").call().content())
+                .isInstanceOf(TransientAiException.class);
+        assertThat(requests.get()).isEqualTo(AiConfig.MAX_ATTEMPTS);
+    }
+
     private ChatModel openAiChatModel() {
+        return openAiChatModel(0);
+    }
+
+    private ChatModel openAiChatModel(int maxRetries) {
         return OpenAiChatModel.builder()
                 .options(OpenAiChatOptions.builder()
                         .apiKey("test-key")
                         .baseUrl("http://127.0.0.1:" + server.getAddress().getPort() + "/v1")
-                        .maxRetries(0)
+                        .maxRetries(maxRetries)
                         .build())
                 .build();
     }

@@ -2,6 +2,7 @@ package com.keepeat.backend.domain.user.service;
 
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import com.keepeat.backend.domain.notification.repository.NotificationRepository;
+import com.keepeat.backend.domain.notification.repository.PushDeliveryRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationJobRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationUsageRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeReactionRepository;
@@ -86,6 +87,9 @@ class AppUserServiceTest {
     private NotificationRepository notificationRepository;
 
     @Mock
+    private PushDeliveryRepository pushDeliveryRepository;
+
+    @Mock
     private UserIngredientRepository userIngredientRepository;
 
     @Mock
@@ -111,6 +115,7 @@ class AppUserServiceTest {
         verify(recipeGenerationJobRepository).deleteAllByUserId(USER_ID);
         verify(recipeGenerationUsageRepository).deleteAllByUserId(USER_ID);
         verify(userIngredientRepository).deleteAllByUserId(USER_ID);
+        verify(pushDeliveryRepository).deleteAllByUserId(USER_ID);
         verify(appUserRepository).delete(user);
     }
 

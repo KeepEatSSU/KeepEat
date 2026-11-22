@@ -7,6 +7,8 @@ app:
   push:
     expo-push-url: ${EXPO_MOCK_BASE_URL:http://localhost:8089}/--/api/v2/push/send
     expo-receipts-url: ${EXPO_MOCK_BASE_URL:http://localhost:8089}/--/api/v2/push/getReceipts
+    receipt-first-check-delay-ms: 30000
+    receipt-retry-delay-ms: 60000
 
 management:
   endpoints:

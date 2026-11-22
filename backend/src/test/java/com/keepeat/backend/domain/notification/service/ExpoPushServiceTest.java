@@ -27,7 +27,7 @@ class ExpoPushServiceTest {
     @DisplayName("푸시 payload data에는 notificationId가 숫자로 포함되고 targetId는 포함되지 않는다")
     void buildPushBody_containsNumericNotificationId_withoutTargetId() {
         PushSendRequest request = new PushSendRequest(
-                "ExpoPushToken[test]", "title", "body", NotificationType.EXPIRY_SOON, 42L);
+                1L, "ExpoPushToken[test]", "title", "body", NotificationType.EXPIRY_SOON, 42L);
 
         Map<String, Object> body = expoPushService.buildPushBody(request);
 
@@ -42,7 +42,7 @@ class ExpoPushServiceTest {
     @DisplayName("notificationId가 없으면 data에 notificationId 키를 넣지 않는다")
     void buildPushBody_withoutNotificationId_omitsKey() {
         PushSendRequest request = new PushSendRequest(
-                "ExpoPushToken[test]", "title", "body", NotificationType.NOTICE, null);
+                1L, "ExpoPushToken[test]", "title", "body", NotificationType.NOTICE, null);
 
         Map<String, Object> body = expoPushService.buildPushBody(request);
 

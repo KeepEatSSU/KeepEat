@@ -3,6 +3,7 @@ package com.keepeat.backend.domain.notification.dto;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
 
 public record PushSendRequest(
+        Long userId,
         String targetToken,        // 누구에게 보낼지
         String title,              // 제목
         String body,               // 내용

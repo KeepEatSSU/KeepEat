@@ -4,6 +4,7 @@ import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import com.keepeat.backend.domain.notification.repository.NotificationRepository;
+import com.keepeat.backend.domain.notification.repository.PushDeliveryRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationJobRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeGenerationUsageRepository;
 import com.keepeat.backend.domain.recipe.repository.RecipeReactionRepository;
@@ -63,6 +64,7 @@ public class AppUserService {
     private final EmailService emailService;
     private final DeviceTokenRepository deviceTokenRepository;
     private final NotificationRepository notificationRepository;
+    private final PushDeliveryRepository pushDeliveryRepository;
     private final OAuthLoginCodeRepository oauthLoginCodeRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final UserSessionRepository userSessionRepository;
@@ -213,6 +215,7 @@ public class AppUserService {
         recipeGenerationJobRepository.deleteAllByUserId(userId);
         recipeGenerationUsageRepository.deleteAllByUserId(userId);
         notificationRepository.deleteAllByUserId(userId);
+        pushDeliveryRepository.deleteAllByUserId(userId);
         deviceTokenRepository.deleteAllByUserId(userId);
         userSessionRepository.deleteAllByUserId(userId);
         oauthLoginCodeRepository.deleteAllByUserId(userId);

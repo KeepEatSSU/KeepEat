@@ -158,6 +158,7 @@ class PushReceiptCheckIntegrationTest {
         assertThat(pushDeliveryRepository.findById(old.getId()).orElseThrow().getStatus())
                 .isEqualTo(PushDeliveryStatus.FAILED);
 
+        pushDeliveryRepository.retrySend(fresh.getId(), freshAfter.getSendAttempts(), now.plus(Duration.ofHours(1)), "503");
         SEND_STATUS.set(200);
         expoPushService.sendDue();
         assertThat(pushDeliveryRepository.findById(fresh.getId()).orElseThrow().getStatus())
@@ -176,6 +177,34 @@ class PushReceiptCheckIntegrationTest {
         PushDelivery after = pushDeliveryRepository.findById(claimed.getId()).orElseThrow();
         assertThat(after.getStatus()).isEqualTo(PushDeliveryStatus.CHECKING);
         assertThat(after.getSendAttempts()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("점유 시간이 지나 다른 작업이 다시 가져간 행은 이전 작업의 늦은 결과로 바뀌지 않는다")
+    void staleClaimResultIsIgnored() {
+        PushDelivery stale = pushDeliveryRepository.save(pending("ExpoPushToken[stale]", Instant.now()));
+        PushDelivery claimed = pushDeliveryRepository.findById(stale.getId()).orElseThrow();
+        claimed.claimSend(Instant.now().minusSeconds(1));
+        pushDeliveryRepository.save(claimed);
+
+        expoPushService.sendDue();
+
+        assertThat(pushDeliveryRepository.retrySend(stale.getId(), 1, Instant.now(), "late")).isZero();
+        assertThat(pushDeliveryRepository.failSend(stale.getId(), 1, "late")).isZero();
+        PushDelivery after = pushDeliveryRepository.findById(stale.getId()).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(PushDeliveryStatus.CHECKING);
+        assertThat(after.getTicketId()).isEqualTo("ticket-from-stub");
+    }
+
+    @Test
+    @DisplayName("receipt MessageRateExceeded로 되돌아온 행도 생성 24시간이 지났으면 보내지 않고 실패로 끝낸다")
+    void requeuedRowPastRetentionIsNotSent() {
+        PushDelivery old = pushDeliveryRepository.save(pending("ExpoPushToken[old-requeued]", Instant.now().minus(Duration.ofHours(25))));
+
+        expoPushService.sendDue();
+
+        assertThat(pushDeliveryRepository.findById(old.getId()).orElseThrow().getStatus()).isEqualTo(PushDeliveryStatus.FAILED);
+        assertThat(SEND_BODIES).isEmpty();
     }
 
     @Test

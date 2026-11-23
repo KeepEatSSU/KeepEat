@@ -82,6 +82,12 @@ public class ExpoPushService {
     }
 
     void send(PushDelivery delivery) {
+        if (!delivery.getCreatedAt().plus(SEND_RETENTION).isAfter(Instant.now())) {
+            log.warn("Expo 푸시 재시도 기한 만료: token={}, error={}", fingerprint(delivery.getToken()), delivery.getLastError());
+            pushDeliveryRepository.failSend(delivery.getId(), delivery.getSendAttempts(),
+                    delivery.getLastError() == null ? "RetentionExpired" : delivery.getLastError());
+            return;
+        }
         JsonNode ticket;
         try {
             ticket = post(expoPushUrl, buildPushBody(delivery)).path("data");
@@ -90,7 +96,7 @@ public class ExpoPushService {
                 retryLater(delivery, "HTTP 429");
             } else {
                 log.warn("Expo 푸시 요청 거부: token={}, status={}", fingerprint(delivery.getToken()), e.getStatusCode().value());
-                pushDeliveryRepository.finish(List.of(delivery.getId()), PushDeliveryStatus.FAILED, "HTTP " + e.getStatusCode().value());
+                pushDeliveryRepository.failSend(delivery.getId(), delivery.getSendAttempts(), "HTTP " + e.getStatusCode().value());
             }
             return;
         } catch (Exception e) {
@@ -107,13 +113,14 @@ public class ExpoPushService {
         String ticketId = ticket.path("id").asText(null);
         if ("ok".equals(status) && ticketId != null) {
             Instant now = Instant.now();
-            pushDeliveryRepository.markTicketed(delivery.getId(), ticketId, now, now.plusMillis(receiptFirstCheckDelayMs));
+            pushDeliveryRepository.markTicketed(delivery.getId(), delivery.getSendAttempts(), ticketId, now,
+                    now.plusMillis(receiptFirstCheckDelayMs));
         } else if ("error".equals(status)) {
             String error = handleDeliveryError(delivery.getToken(), ticket);
             if ("MessageRateExceeded".equals(error)) {
                 retryLater(delivery, error);
             } else {
-                pushDeliveryRepository.finish(List.of(delivery.getId()), PushDeliveryStatus.FAILED, error);
+                pushDeliveryRepository.failSend(delivery.getId(), delivery.getSendAttempts(), error);
             }
         } else {
             log.warn("Expo 푸시 응답 형식이 올바르지 않음: token={}", fingerprint(delivery.getToken()));
@@ -123,14 +130,10 @@ public class ExpoPushService {
 
     private void retryLater(PushDelivery delivery, String error) {
         Instant now = Instant.now();
-        if (!delivery.getCreatedAt().plus(SEND_RETENTION).isAfter(now)) {
-            log.warn("Expo 푸시 재시도 기한 만료: token={}, error={}", fingerprint(delivery.getToken()), error);
-            pushDeliveryRepository.finish(List.of(delivery.getId()), PushDeliveryStatus.FAILED, error);
-            return;
-        }
         int exponent = Math.min(Math.max(delivery.getSendAttempts() - 1, 0), 10);
         Duration delay = SEND_RETRY_BASE.multipliedBy(1L << exponent);
-        pushDeliveryRepository.retrySend(delivery.getId(), now.plus(delay.compareTo(SEND_RETRY_MAX) > 0 ? SEND_RETRY_MAX : delay), error);
+        pushDeliveryRepository.retrySend(delivery.getId(), delivery.getSendAttempts(),
+                now.plus(delay.compareTo(SEND_RETRY_MAX) > 0 ? SEND_RETRY_MAX : delay), error);
     }
 
     @Scheduled(fixedDelayString = "${app.push.receipt-check-delay-ms:60000}",
@@ -175,7 +178,7 @@ public class ExpoPushService {
             } else if ("error".equals(status)) {
                 String error = handleDeliveryError(delivery.getToken(), receipt);
                 if ("MessageRateExceeded".equals(error)) {
-                    pushDeliveryRepository.retrySend(delivery.getId(), now.plus(SEND_RETRY_BASE), error);
+                    pushDeliveryRepository.retrySend(delivery.getId(), delivery.getSendAttempts(), now.plus(SEND_RETRY_BASE), error);
                 } else {
                     pushDeliveryRepository.finish(List.of(delivery.getId()), PushDeliveryStatus.FAILED, error);
                 }

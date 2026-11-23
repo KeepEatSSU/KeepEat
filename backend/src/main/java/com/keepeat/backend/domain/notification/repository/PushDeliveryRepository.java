@@ -37,20 +37,33 @@ public interface PushDeliveryRepository extends JpaRepository<PushDelivery, Long
     @Query("""
             UPDATE PushDelivery d SET d.status = com.keepeat.backend.domain.notification.entity.PushDeliveryStatus.CHECKING,
                 d.ticketId = :ticketId, d.ticketedAt = :ticketedAt, d.nextCheckAt = :nextCheckAt, d.nextSendAt = null
-            WHERE d.id = :id AND d.status = com.keepeat.backend.domain.notification.entity.PushDeliveryStatus.PENDING
+            WHERE d.id = :id AND d.sendAttempts = :sendAttempts
+                AND d.status = com.keepeat.backend.domain.notification.entity.PushDeliveryStatus.PENDING
             """)
-    int markTicketed(@Param("id") Long id, @Param("ticketId") String ticketId, @Param("ticketedAt") Instant ticketedAt,
-                     @Param("nextCheckAt") Instant nextCheckAt);
+    int markTicketed(@Param("id") Long id, @Param("sendAttempts") int sendAttempts, @Param("ticketId") String ticketId,
+                     @Param("ticketedAt") Instant ticketedAt, @Param("nextCheckAt") Instant nextCheckAt);
 
     @Modifying
     @Transactional
     @Query("""
             UPDATE PushDelivery d SET d.status = com.keepeat.backend.domain.notification.entity.PushDeliveryStatus.PENDING,
                 d.ticketId = null, d.nextCheckAt = null, d.nextSendAt = :nextSendAt, d.lastError = :error
-            WHERE d.id = :id AND d.status IN (com.keepeat.backend.domain.notification.entity.PushDeliveryStatus.PENDING,
+            WHERE d.id = :id AND d.sendAttempts = :sendAttempts
+                AND d.status IN (com.keepeat.backend.domain.notification.entity.PushDeliveryStatus.PENDING,
                 com.keepeat.backend.domain.notification.entity.PushDeliveryStatus.CHECKING)
             """)
-    int retrySend(@Param("id") Long id, @Param("nextSendAt") Instant nextSendAt, @Param("error") String error);
+    int retrySend(@Param("id") Long id, @Param("sendAttempts") int sendAttempts, @Param("nextSendAt") Instant nextSendAt,
+                  @Param("error") String error);
+
+    @Modifying
+    @Transactional
+    @Query("""
+            UPDATE PushDelivery d SET d.status = com.keepeat.backend.domain.notification.entity.PushDeliveryStatus.FAILED,
+                d.lastError = :error, d.nextSendAt = null
+            WHERE d.id = :id AND d.sendAttempts = :sendAttempts
+                AND d.status = com.keepeat.backend.domain.notification.entity.PushDeliveryStatus.PENDING
+            """)
+    int failSend(@Param("id") Long id, @Param("sendAttempts") int sendAttempts, @Param("error") String error);
 
     @Modifying
     @Transactional

@@ -76,7 +76,9 @@ public class IngredientExpiryScheduler {
                     today, userId, userItems, sentUsers, skippedUsers, failedUsers
             ));
         } while (userPage.hasNext());
-        notificationBatchRunRepository.markCompleted(today, Instant.now());
+        if (failedUsers.get() == 0) {
+            notificationBatchRunRepository.markCompleted(today, Instant.now());
+        }
 
         log.info("소비기한 알림 배치 완료: sentUsers={}, skippedUsers={}, failedUsers={}, items={}",
                 sentUsers.get(), skippedUsers.get(), failedUsers.get(), itemCount.get());

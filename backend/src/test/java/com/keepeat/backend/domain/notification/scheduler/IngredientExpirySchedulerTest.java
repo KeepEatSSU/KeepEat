@@ -57,6 +57,26 @@ class IngredientExpirySchedulerTest {
     }
 
     @Test
+    @DisplayName("저장에 실패한 유저가 있으면 완료로 기록하지 않아 재기동 때 다시 실행된다")
+    void batchWithFailedUsersStaysIncomplete() {
+        given(userIngredientRepository.findExpiringUserIds(any(), any(), any()))
+                .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(1L)));
+        com.keepeat.backend.domain.useringredient.UserIngredient item =
+                org.mockito.Mockito.mock(com.keepeat.backend.domain.useringredient.UserIngredient.class);
+        given(item.getUserId()).willReturn(1L);
+        given(item.getExpiryDate()).willReturn(today.plusDays(1));
+        given(item.getCustomName()).willReturn("우유");
+        given(userIngredientRepository.findExpiringByUserIds(any(), any(), any())).willReturn(java.util.List.of(item));
+        given(notificationService.sendNotificationOnce(any(), any(), any(), any(), any(), any()))
+                .willThrow(new RuntimeException("db down"));
+
+        scheduler.checkExpiringIngredients();
+
+        verify(notificationBatchRunRepository).markStarted(eq(today), any(Instant.class));
+        verify(notificationBatchRunRepository, never()).markCompleted(any(), any());
+    }
+
+    @Test
     @DisplayName("오늘 시작했지만 끝나지 않은 배치가 있으면 재기동 때 다시 실행한다")
     void interruptedRunIsResumed() {
         given(notificationBatchRunRepository.existsByRunDateAndCompletedAtIsNull(today)).willReturn(true);

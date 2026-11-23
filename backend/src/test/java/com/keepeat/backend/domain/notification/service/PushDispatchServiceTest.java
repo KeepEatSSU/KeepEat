@@ -1,64 +1,78 @@
 package com.keepeat.backend.domain.notification.service;
 
-import com.keepeat.backend.domain.notification.dto.PushSendRequest;
 import com.keepeat.backend.domain.notification.entity.DeviceToken;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
+import com.keepeat.backend.domain.notification.entity.PushDelivery;
+import com.keepeat.backend.domain.notification.entity.PushDeliveryStatus;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
+import com.keepeat.backend.domain.notification.repository.PushDeliveryRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
-import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.BDDMockito.given;
-import static org.mockito.BDDMockito.willThrow;
-import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
-@ExtendWith(MockitoExtension.class)
 class PushDispatchServiceTest {
 
-    @InjectMocks
-    private PushDispatchService pushDispatchService;
-
-    @Mock
-    private DeviceTokenRepository deviceTokenRepository;
-
-    @Mock
-    private ExpoPushService expoPushService;
+    private final DeviceTokenRepository deviceTokenRepository = mock(DeviceTokenRepository.class);
+    private final PushDeliveryRepository pushDeliveryRepository = mock(PushDeliveryRepository.class);
+    private final ExpoPushService expoPushService = mock(ExpoPushService.class);
+    private final List<Runnable> submitted = new ArrayList<>();
+    private final Executor executor = submitted::add;
+    private final PushDispatchService pushDispatchService =
+            new PushDispatchService(deviceTokenRepository, pushDeliveryRepository, expoPushService, executor);
 
     @Test
-    @DisplayName("dispatch는 notificationId를 담은 PushSendRequest를 만든다")
-    void dispatch_buildsRequestWithNotificationId() {
-        DeviceToken token = mock(DeviceToken.class);
-        given(token.getToken()).willReturn("ExpoPushToken[test]");
-        given(deviceTokenRepository.findAllByUserId(1L)).willReturn(List.of(token));
+    @DisplayName("enqueue는 기기 토큰마다 발송 대기 기록을 만든다")
+    @SuppressWarnings("unchecked")
+    void enqueue_storesPendingDeliveryPerToken() {
+        DeviceToken phone = mock(DeviceToken.class);
+        DeviceToken tablet = mock(DeviceToken.class);
+        given(phone.getToken()).willReturn("ExpoPushToken[phone]");
+        given(tablet.getToken()).willReturn("ExpoPushToken[tablet]");
+        given(deviceTokenRepository.findAllByUserId(1L)).willReturn(List.of(phone, tablet));
 
-        pushDispatchService.dispatch(1L, "title", "body", NotificationType.RECIPE_READY, 42L);
+        pushDispatchService.enqueue(1L, "title", "body", NotificationType.RECIPE_READY, 42L);
 
-        ArgumentCaptor<PushSendRequest> captor = ArgumentCaptor.forClass(PushSendRequest.class);
-        verify(expoPushService).sendMessage(captor.capture());
-        assertThat(captor.getValue().notificationId()).isEqualTo(42L);
-        assertThat(captor.getValue().type()).isEqualTo(NotificationType.RECIPE_READY);
+        ArgumentCaptor<List<PushDelivery>> captor = ArgumentCaptor.forClass(List.class);
+        verify(pushDeliveryRepository).saveAll(captor.capture());
+        assertThat(captor.getValue()).extracting(PushDelivery::getToken)
+                .containsExactly("ExpoPushToken[phone]", "ExpoPushToken[tablet]");
+        assertThat(captor.getValue()).allSatisfy(delivery -> {
+            assertThat(delivery.getStatus()).isEqualTo(PushDeliveryStatus.PENDING);
+            assertThat(delivery.getNotificationId()).isEqualTo(42L);
+            assertThat(delivery.getNextSendAt()).isNotNull();
+        });
     }
 
     @Test
-    @DisplayName("푸시 발송 실패가 dispatch 밖으로 전파되지 않는다")
-    void dispatch_swallowsPushFailure() {
-        DeviceToken token = mock(DeviceToken.class);
-        given(token.getToken()).willReturn("ExpoPushToken[test]");
-        given(deviceTokenRepository.findAllByUserId(1L)).willReturn(List.of(token));
-        willThrow(new RuntimeException("expo down")).given(expoPushService).sendMessage(any());
+    @DisplayName("wake를 여러 번 불러도 발송 작업은 정해진 수만 돈다")
+    void wake_startsAtMostWorkers() {
+        pushDispatchService.wake();
+        pushDispatchService.wake();
 
-        assertThatCode(() -> pushDispatchService.dispatch(
-                1L, "title", "body", NotificationType.EXPIRY_SOON, 42L))
-                .doesNotThrowAnyException();
+        assertThat(submitted).hasSize(PushDispatchService.WORKERS);
+    }
+
+    @Test
+    @DisplayName("발송 작업은 보낼 것이 없을 때까지 돌고, 실패해도 끝나면 다시 깨울 수 있다")
+    void drain_runsUntilEmptyAndReleasesSlot() {
+        given(expoPushService.sendDue()).willReturn(true, true, false).willThrow(new RuntimeException("db down"));
+
+        pushDispatchService.wake();
+        submitted.get(0).run();
+        submitted.get(1).run();
+        pushDispatchService.wake();
+
+        verify(expoPushService, times(4)).sendDue();
+        assertThat(submitted).hasSize(PushDispatchService.WORKERS + 2);
     }
 }

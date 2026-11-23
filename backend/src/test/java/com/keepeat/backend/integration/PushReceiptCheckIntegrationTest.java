@@ -1,6 +1,5 @@
 package com.keepeat.backend.integration;
 
-import com.keepeat.backend.domain.notification.dto.PushSendRequest;
 import com.keepeat.backend.domain.notification.entity.DeviceToken;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
 import com.keepeat.backend.domain.notification.entity.PushDelivery;
@@ -8,6 +7,8 @@ import com.keepeat.backend.domain.notification.entity.PushDeliveryStatus;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
 import com.keepeat.backend.domain.notification.repository.PushDeliveryRepository;
 import com.keepeat.backend.domain.notification.service.ExpoPushService;
+import com.keepeat.backend.domain.notification.service.NotificationService;
+import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.user.entity.AppUser;
 import com.keepeat.backend.domain.user.entity.Role;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
@@ -22,9 +23,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
-import org.springframework.transaction.support.TransactionTemplate;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -43,6 +41,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -56,6 +55,8 @@ class PushReceiptCheckIntegrationTest {
     private static final String TICKET_OK = "{\"data\":{\"status\":\"ok\",\"id\":\"ticket-from-stub\"}}";
     private static final java.util.concurrent.atomic.AtomicReference<String> SEND_RESPONSE =
             new java.util.concurrent.atomic.AtomicReference<>(TICKET_OK);
+    private static final java.util.concurrent.atomic.AtomicInteger SEND_STATUS = new java.util.concurrent.atomic.AtomicInteger(200);
+    private static final List<String> SEND_BODIES = new CopyOnWriteArrayList<>();
 
     @Autowired
     private ExpoPushService expoPushService;
@@ -73,7 +74,7 @@ class PushReceiptCheckIntegrationTest {
     private AppUserService appUserService;
 
     @Autowired
-    private TransactionTemplate transactionTemplate;
+    private NotificationService notificationService;
 
     private Long userId;
 
@@ -96,59 +97,156 @@ class PushReceiptCheckIntegrationTest {
         RECEIPT_REQUEST_SIZES.clear();
         RECEIPTS_DOWN.set(false);
         SEND_RESPONSE.set(TICKET_OK);
+        SEND_STATUS.set(200);
+        SEND_BODIES.clear();
         userId = appUserRepository.saveAndFlush(
                 new AppUser("social", "push-" + UUID.randomUUID() + "@test.com", "google", "sub-" + UUID.randomUUID(), Role.ROLE_USER)).getId();
     }
 
     @Test
-    @DisplayName("ticket을 받으면 발송 기록을 DB에 남기고 첫 확인은 15분 뒤로 잡는다")
-    void ticketIsStoredInDb() {
+    @DisplayName("발송 대기 기록을 보내 ticket을 받으면 확인 중으로 바꾸고 첫 확인은 15분 뒤로 잡는다")
+    void pendingDeliveryIsSentAndTicketed() {
         Instant before = Instant.now();
+        PushDelivery pending = pushDeliveryRepository.save(pending("ExpoPushToken[a]", before));
 
-        expoPushService.sendMessage(new PushSendRequest(userId, "ExpoPushToken[a]", "title", "body",
-                NotificationType.EXPIRY_SOON, 42L));
+        expoPushService.sendDue();
 
-        PushDelivery delivery = pushDeliveryRepository.findAll().get(0);
+        PushDelivery delivery = pushDeliveryRepository.findById(pending.getId()).orElseThrow();
         assertThat(delivery.getStatus()).isEqualTo(PushDeliveryStatus.CHECKING);
         assertThat(delivery.getTicketId()).isEqualTo("ticket-from-stub");
-        assertThat(delivery.getUserId()).isEqualTo(userId);
-        assertThat(delivery.getNotificationId()).isEqualTo(42L);
+        assertThat(delivery.getSendAttempts()).isEqualTo(1);
+        assertThat(delivery.getNextSendAt()).isNull();
         assertThat(delivery.getNextCheckAt()).isAfterOrEqualTo(before.plus(Duration.ofMinutes(15)));
+        assertThat(SEND_BODIES).singleElement().asString()
+                .contains("\"collapseId\":\"push-" + pending.getId() + "\"")
+                .contains("\"tag\":\"push-" + pending.getId() + "\"");
     }
 
     @Test
-    @DisplayName("커밋 후 콜백 안에서 같은 스레드로 발송해도 발송 기록을 저장한다")
-    void ticketIsStoredWhenSentInsideAfterCommit() {
-        transactionTemplate.executeWithoutResult(status -> TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        expoPushService.sendMessage(new PushSendRequest(userId, "ExpoPushToken[after-commit]",
-                                "title", "body", NotificationType.EXPIRY_SOON, 42L));
-                    }
-                }));
+    @DisplayName("알림을 저장하면 같은 트랜잭션에 발송 대기 기록이 남고, 커밋 뒤 발송 작업이 보내 확인 중으로 바뀐다")
+    void notificationIsEnqueuedAndSentAfterCommit() throws InterruptedException {
+        deviceTokenRepository.save(new DeviceToken(userId, "ExpoPushToken[e2e-" + System.nanoTime() + "]"));
 
-        assertThat(pushDeliveryRepository.findAll()).extracting(PushDelivery::getTicketId)
-                .containsExactly("ticket-from-stub");
+        notificationService.sendNotification(userId, "title", "body", NotificationType.NOTICE, null);
+
+        Instant deadline = Instant.now().plusSeconds(10);
+        while (Instant.now().isBefore(deadline) && pushDeliveryRepository.findAll().stream()
+                .anyMatch(d -> d.getStatus() == PushDeliveryStatus.PENDING)) {
+            Thread.sleep(50);
+        }
+        assertThat(pushDeliveryRepository.findAll()).singleElement().satisfies(d -> {
+            assertThat(d.getStatus()).isEqualTo(PushDeliveryStatus.CHECKING);
+            assertThat(d.getUserId()).isEqualTo(userId);
+            assertThat(d.getNotificationId()).isNotNull();
+        });
     }
 
     @Test
-    @DisplayName("커밋 후 콜백 안에서 발송해 DeviceNotRegistered를 받아도 기기 토큰을 지운다")
-    void deviceTokenIsDeletedWhenSentInsideAfterCommit() {
-        String token = "ExpoPushToken[gone-after-commit-" + System.nanoTime() + "]";
+    @DisplayName("Expo가 5xx면 발송 대기로 남기고 다음 시도를 뒤로 미룬다. 생성 24시간이 지났으면 실패로 끝낸다")
+    void serverErrorIsRetriedLaterUntilRetention() {
+        Instant now = Instant.now();
+        PushDelivery fresh = pushDeliveryRepository.save(pending("ExpoPushToken[fresh]", now));
+        PushDelivery old = pushDeliveryRepository.save(pending("ExpoPushToken[old]", now.minus(Duration.ofHours(25))));
+        SEND_STATUS.set(503);
+
+        expoPushService.sendDue();
+
+        PushDelivery freshAfter = pushDeliveryRepository.findById(fresh.getId()).orElseThrow();
+        assertThat(freshAfter.getStatus()).isEqualTo(PushDeliveryStatus.PENDING);
+        assertThat(freshAfter.getNextSendAt()).isAfter(now);
+        assertThat(freshAfter.getLastError()).isNotNull();
+        assertThat(pushDeliveryRepository.findById(old.getId()).orElseThrow().getStatus())
+                .isEqualTo(PushDeliveryStatus.FAILED);
+
+        pushDeliveryRepository.retrySend(fresh.getId(), freshAfter.getSendAttempts(), now.plus(Duration.ofHours(1)), "503");
+        SEND_STATUS.set(200);
+        expoPushService.sendDue();
+        assertThat(pushDeliveryRepository.findById(fresh.getId()).orElseThrow().getStatus())
+                .isEqualTo(PushDeliveryStatus.PENDING);
+    }
+
+    @Test
+    @DisplayName("다른 서버가 가져간 뒤 끝내지 못한 발송 대기 기록은 점유 시간이 지나면 다시 보낸다")
+    void abandonedClaimIsSentAgain() {
+        PushDelivery claimed = pending("ExpoPushToken[claimed]", Instant.now());
+        claimed.claimSend(Instant.now().minusSeconds(1));
+        pushDeliveryRepository.save(claimed);
+
+        expoPushService.sendDue();
+
+        PushDelivery after = pushDeliveryRepository.findById(claimed.getId()).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(PushDeliveryStatus.CHECKING);
+        assertThat(after.getSendAttempts()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("점유 시간이 지나 다른 작업이 다시 가져간 행은 이전 작업의 늦은 결과로 바뀌지 않는다")
+    void staleClaimResultIsIgnored() {
+        PushDelivery stale = pushDeliveryRepository.save(pending("ExpoPushToken[stale]", Instant.now()));
+        PushDelivery claimed = pushDeliveryRepository.findById(stale.getId()).orElseThrow();
+        claimed.claimSend(Instant.now().minusSeconds(1));
+        pushDeliveryRepository.save(claimed);
+
+        expoPushService.sendDue();
+
+        assertThat(pushDeliveryRepository.retrySend(stale.getId(), 1, Instant.now(), "late")).isZero();
+        assertThat(pushDeliveryRepository.failSend(stale.getId(), 1, "late")).isZero();
+        PushDelivery after = pushDeliveryRepository.findById(stale.getId()).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(PushDeliveryStatus.CHECKING);
+        assertThat(after.getTicketId()).isEqualTo("ticket-from-stub");
+    }
+
+    @Test
+    @DisplayName("receipt MessageRateExceeded로 되돌아온 행도 생성 24시간이 지났으면 보내지 않고 실패로 끝낸다")
+    void requeuedRowPastRetentionIsNotSent() {
+        PushDelivery old = pushDeliveryRepository.save(pending("ExpoPushToken[old-requeued]", Instant.now().minus(Duration.ofHours(25))));
+
+        expoPushService.sendDue();
+
+        assertThat(pushDeliveryRepository.findById(old.getId()).orElseThrow().getStatus()).isEqualTo(PushDeliveryStatus.FAILED);
+        assertThat(SEND_BODIES).isEmpty();
+    }
+
+    @Test
+    @DisplayName("Expo가 400이면 재시도하지 않고 실패로 끝낸다")
+    void clientErrorFails() {
+        PushDelivery pending = pushDeliveryRepository.save(pending("ExpoPushToken[bad]", Instant.now()));
+        SEND_STATUS.set(400);
+
+        expoPushService.sendDue();
+
+        PushDelivery after = pushDeliveryRepository.findById(pending.getId()).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(PushDeliveryStatus.FAILED);
+        assertThat(after.getLastError()).isEqualTo("HTTP 400");
+    }
+
+    @Test
+    @DisplayName("ticket이 DeviceNotRegistered면 실패로 기록하고 기기 토큰을 지운다")
+    void ticketDeviceNotRegisteredDeletesToken() {
+        String token = "ExpoPushToken[gone-ticket-" + System.nanoTime() + "]";
         deviceTokenRepository.save(new DeviceToken(userId, token));
+        PushDelivery pending = pushDeliveryRepository.save(pending(token, Instant.now()));
         SEND_RESPONSE.set("{\"data\":{\"status\":\"error\",\"details\":{\"error\":\"DeviceNotRegistered\"}}}");
 
-        transactionTemplate.executeWithoutResult(status -> TransactionSynchronizationManager.registerSynchronization(
-                new TransactionSynchronization() {
-                    @Override
-                    public void afterCommit() {
-                        expoPushService.sendMessage(new PushSendRequest(userId, token, "title", "body",
-                                NotificationType.EXPIRY_SOON, 42L));
-                    }
-                }));
+        expoPushService.sendDue();
 
+        assertThat(pushDeliveryRepository.findById(pending.getId()).orElseThrow().getStatus())
+                .isEqualTo(PushDeliveryStatus.FAILED);
         assertThat(deviceTokenRepository.findAllByUserId(userId)).extracting(DeviceToken::getToken).doesNotContain(token);
+    }
+
+    @Test
+    @DisplayName("receipt가 MessageRateExceeded면 같은 발송 기록을 발송 대기로 되돌린다")
+    void receiptRateExceededRequeues() {
+        PushDelivery delivery = pushDeliveryRepository.save(due("rate", Instant.now().minusSeconds(60)));
+        RECEIPTS.put("rate", "{\"status\":\"error\",\"details\":{\"error\":\"MessageRateExceeded\"}}");
+
+        expoPushService.checkReceipts();
+
+        PushDelivery after = pushDeliveryRepository.findById(delivery.getId()).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(PushDeliveryStatus.PENDING);
+        assertThat(after.getTicketId()).isNull();
+        assertThat(after.getNextSendAt()).isNotNull();
     }
 
     @Test
@@ -240,9 +338,13 @@ class PushReceiptCheckIntegrationTest {
         appUserService.deleteUser(userId, null);
 
         assertThat(pushDeliveryRepository.findAll()).isEmpty();
-        expoPushService.sendMessage(new PushSendRequest(userId, "ExpoPushToken[late]", "title", "body",
-                NotificationType.EXPIRY_SOON, 42L));
+        assertThatThrownBy(() -> notificationService.sendNotification(userId, "title", "body", NotificationType.NOTICE, null))
+                .isInstanceOf(KeepEatException.class);
         assertThat(pushDeliveryRepository.findAll()).isEmpty();
+    }
+
+    private PushDelivery pending(String token, Instant createdAt) {
+        return PushDelivery.pending(userId, 1L, token, "title", "body", NotificationType.EXPIRY_SOON, createdAt);
     }
 
     private PushDelivery due(String ticketId, Instant ticketedAt) {
@@ -253,7 +355,15 @@ class PushReceiptCheckIntegrationTest {
     private static HttpServer startExpoStub() {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-            server.createContext("/send", exchange -> respond(exchange, SEND_RESPONSE.get()));
+            server.createContext("/send", exchange -> {
+                SEND_BODIES.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                if (SEND_STATUS.get() != 200) {
+                    exchange.sendResponseHeaders(SEND_STATUS.get(), -1);
+                    exchange.close();
+                    return;
+                }
+                respond(exchange, SEND_RESPONSE.get());
+            });
             server.createContext("/receipts", exchange -> {
                 if (RECEIPTS_DOWN.get()) {
                     exchange.getRequestBody().readAllBytes();

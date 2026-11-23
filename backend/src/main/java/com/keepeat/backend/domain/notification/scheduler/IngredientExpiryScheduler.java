@@ -1,16 +1,21 @@
 package com.keepeat.backend.domain.notification.scheduler;
 
 import com.keepeat.backend.domain.notification.entity.NotificationType;
+import com.keepeat.backend.domain.notification.repository.NotificationBatchRunRepository;
 import com.keepeat.backend.domain.notification.service.NotificationService;
 import com.keepeat.backend.domain.useringredient.UserIngredient;
 import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
@@ -29,10 +34,21 @@ public class IngredientExpiryScheduler {
 
     private final UserIngredientRepository userIngredientRepository;
     private final NotificationService notificationService;
+    private final NotificationBatchRunRepository notificationBatchRunRepository;
+    private final TaskScheduler taskScheduler;
+
+    @EventListener(ApplicationReadyEvent.class)
+    public void resumeInterruptedRun() {
+        if (notificationBatchRunRepository.existsByRunDateAndCompletedAtIsNull(LocalDate.now(SEOUL))) {
+            log.warn("중단된 소비기한 알림 배치를 다시 실행합니다");
+            taskScheduler.schedule(this::checkExpiringIngredients, Instant.now());
+        }
+    }
 
     @Scheduled(cron = "${app.notification.expiry-cron:0 0 9 * * *}", zone = "Asia/Seoul")
     public void checkExpiringIngredients() {
         LocalDate today = LocalDate.now(SEOUL);
+        notificationBatchRunRepository.markStarted(today, Instant.now());
         LocalDate targetDate = today.plusDays(3);
         AtomicInteger sentUsers = new AtomicInteger();
         AtomicInteger skippedUsers = new AtomicInteger();
@@ -60,6 +76,9 @@ public class IngredientExpiryScheduler {
                     today, userId, userItems, sentUsers, skippedUsers, failedUsers
             ));
         } while (userPage.hasNext());
+        if (failedUsers.get() == 0) {
+            notificationBatchRunRepository.markCompleted(today, Instant.now());
+        }
 
         log.info("소비기한 알림 배치 완료: sentUsers={}, skippedUsers={}, failedUsers={}, items={}",
                 sentUsers.get(), skippedUsers.get(), failedUsers.get(), itemCount.get());

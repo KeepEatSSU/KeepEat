@@ -89,7 +89,7 @@ class NotificationServiceTest {
     @DisplayName("sendNotificationOnce skips duplicated dedupe key")
     void sendNotificationOnce_duplicateKey_skips() {
         AppUser user = new AppUser("user", "user@test.com", "encoded", Role.ROLE_USER);
-        given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(appUserRepository.findByIdForShare(USER_ID)).willReturn(Optional.of(user));
         given(notificationRepository.insertIfAbsent(
                 eq(USER_ID), eq("title"), eq("body"), eq("EXPIRY_SOON"),
                 eq(null), eq("dedupe"), any(java.time.Instant.class)
@@ -100,14 +100,14 @@ class NotificationServiceTest {
 
         assertThat(sent).isFalse();
         verify(notificationRepository, never()).saveAndFlush(any(Notification.class));
-        verify(pushDispatchService, never()).dispatch(any(), any(), any(), any(), any());
+        verify(pushDispatchService, never()).enqueue(any(), any(), any(), any(), any());
     }
 
     @Test
     @DisplayName("sendNotification passes the persisted notification ID to the push dispatcher")
     void sendNotification_dispatchesWithPersistedNotificationId() {
         AppUser user = new AppUser("user", "user@test.com", "encoded", Role.ROLE_USER);
-        given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(appUserRepository.findByIdForShare(USER_ID)).willReturn(Optional.of(user));
         given(notificationRepository.saveAndFlush(any(Notification.class))).willAnswer(invocation -> {
             Notification saved = invocation.getArgument(0);
             org.springframework.test.util.ReflectionTestUtils.setField(saved, "id", 42L);
@@ -116,14 +116,15 @@ class NotificationServiceTest {
 
         notificationService.sendNotification(USER_ID, "title", "body", NotificationType.RECIPE_READY, null);
 
-        verify(pushDispatchService).dispatch(USER_ID, "title", "body", NotificationType.RECIPE_READY, 42L);
+        verify(pushDispatchService).enqueue(USER_ID, "title", "body", NotificationType.RECIPE_READY, 42L);
+        verify(pushDispatchService).wake();
     }
 
     @Test
     @DisplayName("sendNotificationOnce looks up the inserted row's ID and passes it to the push dispatcher")
     void sendNotificationOnce_dispatchesWithLookedUpNotificationId() {
         AppUser user = new AppUser("user", "user@test.com", "encoded", Role.ROLE_USER);
-        given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(appUserRepository.findByIdForShare(USER_ID)).willReturn(Optional.of(user));
         given(notificationRepository.insertIfAbsent(
                 eq(USER_ID), eq("title"), eq("body"), eq("EXPIRY_SOON"),
                 eq(null), eq("dedupe"), any(java.time.Instant.class)
@@ -134,14 +135,15 @@ class NotificationServiceTest {
                 USER_ID, "title", "body", NotificationType.EXPIRY_SOON, null, "dedupe");
 
         assertThat(sent).isTrue();
-        verify(pushDispatchService).dispatch(USER_ID, "title", "body", NotificationType.EXPIRY_SOON, 77L);
+        verify(pushDispatchService).enqueue(USER_ID, "title", "body", NotificationType.EXPIRY_SOON, 77L);
+        verify(pushDispatchService).wake();
     }
 
     @Test
-    @DisplayName("push dispatch runs only after the surrounding transaction commits")
+    @DisplayName("push deliveries are stored in the surrounding transaction and the sender wakes only after commit")
     void sendNotification_withActiveTransaction_dispatchesAfterCommit() {
         AppUser user = new AppUser("user", "user@test.com", "encoded", Role.ROLE_USER);
-        given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(appUserRepository.findByIdForShare(USER_ID)).willReturn(Optional.of(user));
         given(notificationRepository.saveAndFlush(any(Notification.class))).willAnswer(invocation -> {
             Notification saved = invocation.getArgument(0);
             org.springframework.test.util.ReflectionTestUtils.setField(saved, "id", 42L);
@@ -151,11 +153,12 @@ class NotificationServiceTest {
         org.springframework.transaction.support.TransactionSynchronizationManager.initSynchronization();
         try {
             notificationService.sendNotification(USER_ID, "title", "body", NotificationType.RECIPE_READY, null);
-            verify(pushDispatchService, never()).dispatch(any(), any(), any(), any(), any());
+            verify(pushDispatchService).enqueue(USER_ID, "title", "body", NotificationType.RECIPE_READY, 42L);
+            verify(pushDispatchService, never()).wake();
 
             org.springframework.transaction.support.TransactionSynchronizationManager.getSynchronizations()
                     .forEach(org.springframework.transaction.support.TransactionSynchronization::afterCommit);
-            verify(pushDispatchService).dispatch(USER_ID, "title", "body", NotificationType.RECIPE_READY, 42L);
+            verify(pushDispatchService).wake();
         } finally {
             org.springframework.transaction.support.TransactionSynchronizationManager.clearSynchronization();
         }
@@ -165,7 +168,7 @@ class NotificationServiceTest {
     @DisplayName("notification payloads longer than the database limit are rejected")
     void sendNotification_tooLongTitle_rejected() {
         AppUser user = new AppUser("user", "user@test.com", "encoded", Role.ROLE_USER);
-        given(appUserRepository.findById(USER_ID)).willReturn(Optional.of(user));
+        given(appUserRepository.findByIdForShare(USER_ID)).willReturn(Optional.of(user));
 
         assertThatThrownBy(() -> notificationService.sendNotification(
                 USER_ID, "x".repeat(201), "body", NotificationType.NOTICE, null))

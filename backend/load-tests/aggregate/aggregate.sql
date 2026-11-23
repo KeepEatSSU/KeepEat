@@ -13,7 +13,8 @@ WITH ev AS (
            e->>'outcome'                                         AS outcome,
            e->>'ticket'                                          AS ticket,
            e->>'receipt'                                         AS receipt,
-           (e->>'nid')::bigint                                   AS nid
+           (e->>'nid')::bigint                                   AS nid,
+           e->>'collapse'                                        AS collapse
     FROM loadtest.mock_event
 ),
 req AS (SELECT * FROM ev WHERE ev IN ('send', 'ticket')),
@@ -36,6 +37,8 @@ SELECT x.*,
             AND r.outcome NOT IN ('ok', 'ok_late', 'DeviceNotRegistered')) AS failed_requests,
        (SELECT count(*) FROM tk WHERE tk.uid = x.user_id)                 AS ok_tickets,
        (SELECT count(DISTINCT tk.nid) FROM tk WHERE tk.uid = x.user_id)   AS ok_notifications,
+       (SELECT count(DISTINCT tk.collapse) + count(*) FILTER (WHERE tk.collapse IS NULL)
+            FROM tk WHERE tk.uid = x.user_id)                             AS shown_notifications,
        (SELECT count(*) FROM ev WHERE ev.uid = x.user_id AND ev.outcome = 'DeviceNotRegistered') AS dnr,
        EXISTS (SELECT 1 FROM tk JOIN receipt_ok o USING (ticket) WHERE tk.uid = x.user_id) AS reached,
        EXISTS (SELECT 1 FROM tk WHERE tk.uid = x.user_id AND tk.receipt = 'never')         AS receipt_never,
@@ -77,6 +80,7 @@ FROM loadtest.user_result WHERE in_denominator AND NOT reached;
 SELECT count(*) FILTER (WHERE saved AND NOT expiring)                   AS unexpected_saved,
        count(*) FILTER (WHERE requests > 0 AND NOT expect_request)      AS unexpected_requests,
        count(*) FILTER (WHERE ok_tickets > ok_notifications)            AS duplicate_users,
+       count(*) FILTER (WHERE shown_notifications > ok_notifications)   AS shown_duplicate_users,
        coalesce(sum(requests - 1) FILTER (WHERE requests > 1), 0)       AS retries,
        count(*) FILTER (WHERE expect_request AND expired_token AND token_left)           AS expired_token_not_deleted
 FROM loadtest.user_result;

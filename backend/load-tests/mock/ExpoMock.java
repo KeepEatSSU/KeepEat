@@ -138,6 +138,7 @@ public class ExpoMock {
     // 배열 요청이면 to와 notificationId를 등장 순서로 짝짓는다.
     static final Pattern TO = Pattern.compile("\"to\"\\s*:\\s*\"([^\"]*)\"");
     static final Pattern NID = Pattern.compile("\"notificationId\"\\s*:\\s*(\\d+)");
+    static final Pattern COLLAPSE = Pattern.compile("\"collapseId\"\\s*:\\s*\"([^\"]*)\"");
     static final Pattern QUOTED = Pattern.compile("\"([^\"]+)\"");
 
     static List<String> all(Pattern p, String s) {
@@ -161,6 +162,7 @@ public class ExpoMock {
         boolean isArray = body.stripLeading().startsWith("[");
         List<String> tokens = all(TO, body);
         List<String> nids = all(NID, body);
+        List<String> collapses = all(COLLAPSE, body);
         String firstToken = tokens.isEmpty() ? null : tokens.get(0);
         String firstNid = nids.isEmpty() ? null : nids.get(0);
         String base = "{\"ts\":" + now + ",\"ev\":\"send\",\"token\":" + esc(firstToken) + ",\"nid\":" + firstNid
@@ -202,8 +204,9 @@ public class ExpoMock {
         for (int i = 0; i < tokens.size(); i++) {
             String token = tokens.get(i);
             String nid = i < nids.size() ? nids.get(i) : null;
+            String collapse = i < collapses.size() ? collapses.get(i) : null;
             String line = "{\"ts\":" + now + ",\"ev\":\"ticket\",\"token\":" + esc(token) + ",\"nid\":" + nid
-                    + ",\"delayMs\":" + delay;
+                    + ",\"collapse\":" + esc(collapse) + ",\"delayMs\":" + delay;
             // F7: 시드가 만료 토큰 이름에 "expired"를 넣는다
             if (token.contains("expired")) {
                 record(line + ",\"outcome\":\"DeviceNotRegistered\"}");

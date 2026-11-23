@@ -4,7 +4,6 @@ import com.keepeat.backend.domain.common.exception.ErrorCode;
 import com.keepeat.backend.domain.common.exception.KeepEatException;
 import com.keepeat.backend.domain.notification.dto.NotificationPageResponse;
 import com.keepeat.backend.domain.notification.dto.NotificationResponse;
-import com.keepeat.backend.domain.notification.dto.PushSendRequest;
 import com.keepeat.backend.domain.notification.entity.Notification;
 import com.keepeat.backend.domain.notification.entity.NotificationType;
 import com.keepeat.backend.domain.notification.repository.DeviceTokenRepository;
@@ -51,7 +50,7 @@ public class NotificationService {
 
     @Transactional
     public boolean sendNotificationOnce(Long userId, String title, String body, NotificationType type, String targetId, String dedupeKey) {
-        AppUser user = requireActiveUser(userId);
+        AppUser user = lockActiveUser(userId);
         validateNotificationPayload(title, body, type, targetId, dedupeKey);
         if (dedupeKey == null || dedupeKey.isBlank()) {
             throw new IllegalArgumentException("중복 방지 알림에는 dedupeKey가 필요합니다.");
@@ -163,7 +162,7 @@ public class NotificationService {
     }
 
     private void sendNotificationInternal(Long userId, String title, String body, NotificationType type, String targetId, String dedupeKey) {
-        AppUser user = requireActiveUser(userId);
+        AppUser user = lockActiveUser(userId);
         validateNotificationPayload(title, body, type, targetId, dedupeKey);
 
         Notification notification = new Notification(userId, title, body, type, targetId, dedupeKey);
@@ -178,21 +177,23 @@ public class NotificationService {
     }
 
     private void sendPushAfterCommit(Long userId, String title, String body, NotificationType type, Long notificationId) {
+        pushDispatchService.enqueue(userId, title, body, type, notificationId);
         if (!TransactionSynchronizationManager.isSynchronizationActive()) {
-            sendPush(userId, title, body, type, notificationId);
+            pushDispatchService.wake();
             return;
         }
 
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                pushDispatchService.dispatch(userId, title, body, type, notificationId);
+                pushDispatchService.wake();
             }
         });
     }
 
-    private void sendPush(Long userId, String title, String body, NotificationType type, Long notificationId) {
-        pushDispatchService.dispatch(userId, title, body, type, notificationId);
+    private AppUser lockActiveUser(Long userId) {
+        return appUserRepository.findByIdForShare(userId)
+                .orElseThrow(() -> new KeepEatException(ErrorCode.USER_NOT_FOUND));
     }
 
     private AppUser requireActiveUser(Long userId) {

@@ -65,7 +65,7 @@ class UserIngredientServiceTest {
         IngredientStorage storage = createStorage(ingredient, StorageType.냉장, 5, Metric.Days);
         LocalDate purchaseDate = LocalDate.of(2026, 3, 31);
 
-        given(ingredientRepository.findAllById(List.of(INGREDIENT_ID))).willReturn(List.of(ingredient));
+        given(ingredientRepository.findAllWithSubCategoryAndCategoryByIdIn(List.of(INGREDIENT_ID))).willReturn(List.of(ingredient));
         given(ingredientStorageRepository.findAllByIngredientIdIn(List.of(INGREDIENT_ID))).willReturn(List.of(storage));
         given(userIngredientRepository.saveAll(anyList())).willAnswer(invocation -> invocation.getArgument(0));
 
@@ -92,7 +92,7 @@ class UserIngredientServiceTest {
         IngredientStorage milkStorage = createStorage(milk, StorageType.냉장, 10, Metric.Days);
         LocalDate purchaseDate = LocalDate.of(2026, 3, 31);
 
-        given(ingredientRepository.findAllById(List.of(INGREDIENT_ID, 26L))).willReturn(List.of(samgyeopsal, milk));
+        given(ingredientRepository.findAllWithSubCategoryAndCategoryByIdIn(List.of(INGREDIENT_ID, 26L))).willReturn(List.of(samgyeopsal, milk));
         given(ingredientStorageRepository.findAllByIngredientIdIn(List.of(INGREDIENT_ID, 26L)))
                 .willReturn(List.of(samgyeopsalStorage, milkStorage));
         given(userIngredientRepository.saveAll(anyList())).willAnswer(invocation -> invocation.getArgument(0));
@@ -109,7 +109,7 @@ class UserIngredientServiceTest {
         // then
         assertThat(result).extracting(UserIngredientResponse::expiryDate)
                 .containsExactly(purchaseDate.plusDays(5), purchaseDate.plusDays(10), purchaseDate.plusDays(5));
-        verify(ingredientRepository, times(1)).findAllById(any());
+        verify(ingredientRepository, times(1)).findAllWithSubCategoryAndCategoryByIdIn(any());
         verify(ingredientStorageRepository, times(1)).findAllByIngredientIdIn(any());
     }
 
@@ -121,7 +121,7 @@ class UserIngredientServiceTest {
         LocalDate purchaseDate = LocalDate.of(2026, 3, 31);
         LocalDate customExpiry = LocalDate.of(2026, 4, 15);
 
-        given(ingredientRepository.findAllById(List.of(INGREDIENT_ID))).willReturn(List.of(ingredient));
+        given(ingredientRepository.findAllWithSubCategoryAndCategoryByIdIn(List.of(INGREDIENT_ID))).willReturn(List.of(ingredient));
         given(userIngredientRepository.saveAll(anyList())).willAnswer(invocation -> invocation.getArgument(0));
 
         UserIngredientCreateRequest request = new UserIngredientCreateRequest(
@@ -140,7 +140,7 @@ class UserIngredientServiceTest {
     @DisplayName("존재하지 않는 ingredientId — INGREDIENT_NOT_FOUND")
     void create_ingredientNotFound() {
         // given
-        given(ingredientRepository.findAllById(List.of(999L))).willReturn(List.of());
+        given(ingredientRepository.findAllWithSubCategoryAndCategoryByIdIn(List.of(999L))).willReturn(List.of());
 
         UserIngredientCreateRequest request = new UserIngredientCreateRequest(
                 999L, StorageType.냉장, LocalDate.now(), null, 500.0, "g", null
@@ -161,7 +161,7 @@ class UserIngredientServiceTest {
                 .status(IngredientStatus.PENDING)
                 .build();
         ReflectionTestUtils.setField(pending, "id", INGREDIENT_ID);
-        given(ingredientRepository.findAllById(List.of(INGREDIENT_ID))).willReturn(List.of(pending));
+        given(ingredientRepository.findAllWithSubCategoryAndCategoryByIdIn(List.of(INGREDIENT_ID))).willReturn(List.of(pending));
 
         UserIngredientCreateRequest request = new UserIngredientCreateRequest(
                 INGREDIENT_ID, StorageType.냉장, LocalDate.now(), null, 500.0, "g", null
@@ -181,7 +181,7 @@ class UserIngredientServiceTest {
 
         IngredientStorage fridge = createStorage(ingredient, StorageType.냉장, 5, Metric.Days);
 
-        given(ingredientRepository.findAllById(List.of(INGREDIENT_ID))).willReturn(List.of(ingredient));
+        given(ingredientRepository.findAllWithSubCategoryAndCategoryByIdIn(List.of(INGREDIENT_ID))).willReturn(List.of(ingredient));
         given(ingredientStorageRepository.findAllByIngredientIdIn(List.of(INGREDIENT_ID))).willReturn(List.of(fridge));
 
         UserIngredientCreateRequest request = new UserIngredientCreateRequest(
@@ -233,7 +233,7 @@ class UserIngredientServiceTest {
         IngredientStorage storage = createStorage(ingredient, StorageType.냉장, 5, Metric.Days);
         LocalDate purchaseDate = LocalDate.of(2026, 5, 19);
 
-        given(ingredientRepository.findAllById(List.of(INGREDIENT_ID))).willReturn(List.of(ingredient));
+        given(ingredientRepository.findAllWithSubCategoryAndCategoryByIdIn(List.of(INGREDIENT_ID))).willReturn(List.of(ingredient));
         given(ingredientStorageRepository.findAllByIngredientIdIn(List.of(INGREDIENT_ID))).willReturn(List.of(storage));
         given(userIngredientRepository.saveAll(anyList())).willAnswer(invocation -> invocation.getArgument(0));
 

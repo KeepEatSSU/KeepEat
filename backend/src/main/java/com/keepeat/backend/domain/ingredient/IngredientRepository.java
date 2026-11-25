@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,6 +25,14 @@ public interface IngredientRepository extends JpaRepository<Ingredient, Long> {
             ORDER BY i.id
             """)
     List<Ingredient> findAllActiveWithSubCategoryAndCategory();
+
+    @Query("""
+            SELECT i FROM Ingredient i
+            JOIN FETCH i.subCategory sc
+            JOIN FETCH sc.category
+            WHERE i.id IN :ids
+            """)
+    List<Ingredient> findAllWithSubCategoryAndCategoryByIdIn(@Param("ids") Collection<Long> ids);
 
     @Query("""
             SELECT i FROM Ingredient i

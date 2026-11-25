@@ -70,9 +70,15 @@ public class UserIngredientService {
 
     @Transactional
     public List<UserIngredientResponse> create(Long userId, List<UserIngredientCreateRequest> items) {
-        Map<Long, Ingredient> ingredients = ingredientRepository.findAllById(
-                items.stream().map(UserIngredientCreateRequest::ingredientId).filter(Objects::nonNull).distinct().toList()
-        ).stream().collect(Collectors.toMap(Ingredient::getId, Function.identity()));
+        List<Long> ingredientIds = items.stream()
+                .map(UserIngredientCreateRequest::ingredientId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, Ingredient> ingredients = ingredientIds.isEmpty()
+                ? Map.of()
+                : ingredientRepository.findAllWithSubCategoryAndCategoryByIdIn(ingredientIds).stream()
+                        .collect(Collectors.toMap(Ingredient::getId, Function.identity()));
 
         List<Long> storageIngredientIds = items.stream()
                 .filter(item -> item.ingredientId() != null && item.expiryDate() == null)

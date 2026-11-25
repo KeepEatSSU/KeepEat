@@ -30,6 +30,7 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -52,11 +53,14 @@ class PushReceiptCheckIntegrationTest {
     private static final List<Integer> RECEIPT_REQUEST_SIZES = new CopyOnWriteArrayList<>();
     private static final Pattern ID = Pattern.compile("\"([^\"]+)\"");
     private static final AtomicBoolean RECEIPTS_DOWN = new AtomicBoolean();
-    private static final String TICKET_OK = "{\"data\":{\"status\":\"ok\",\"id\":\"ticket-from-stub\"}}";
+    private static final String TICKET_OK = "{\"status\":\"ok\",\"id\":\"ticket-from-stub\"}";
+    private static final Pattern TO = Pattern.compile("\"to\":");
     private static final java.util.concurrent.atomic.AtomicReference<String> SEND_RESPONSE =
             new java.util.concurrent.atomic.AtomicReference<>(TICKET_OK);
     private static final java.util.concurrent.atomic.AtomicInteger SEND_STATUS = new java.util.concurrent.atomic.AtomicInteger(200);
     private static final List<String> SEND_BODIES = new CopyOnWriteArrayList<>();
+    private static final java.util.concurrent.atomic.AtomicReference<String> SEND_DATA =
+            new java.util.concurrent.atomic.AtomicReference<>();
 
     @Autowired
     private ExpoPushService expoPushService;
@@ -99,6 +103,7 @@ class PushReceiptCheckIntegrationTest {
         SEND_RESPONSE.set(TICKET_OK);
         SEND_STATUS.set(200);
         SEND_BODIES.clear();
+        SEND_DATA.set(null);
         userId = appUserRepository.saveAndFlush(
                 new AppUser("social", "push-" + UUID.randomUUID() + "@test.com", "google", "sub-" + UUID.randomUUID(), Role.ROLE_USER)).getId();
     }
@@ -226,13 +231,51 @@ class PushReceiptCheckIntegrationTest {
         String token = "ExpoPushToken[gone-ticket-" + System.nanoTime() + "]";
         deviceTokenRepository.save(new DeviceToken(userId, token));
         PushDelivery pending = pushDeliveryRepository.save(pending(token, Instant.now()));
-        SEND_RESPONSE.set("{\"data\":{\"status\":\"error\",\"details\":{\"error\":\"DeviceNotRegistered\"}}}");
+        SEND_RESPONSE.set("{\"status\":\"error\",\"details\":{\"error\":\"DeviceNotRegistered\"}}");
 
         expoPushService.sendDue();
 
         assertThat(pushDeliveryRepository.findById(pending.getId()).orElseThrow().getStatus())
                 .isEqualTo(PushDeliveryStatus.FAILED);
         assertThat(deviceTokenRepository.findAllByUserId(userId)).extracting(DeviceToken::getToken).doesNotContain(token);
+    }
+
+    @Test
+    @DisplayName("점유한 발송 대기 기록을 한 요청으로 묶어 보내고 ticket을 요청 순서대로 각 행에 대응시킨다")
+    void claimedRowsAreSentInOneRequest() {
+        String gone = "ExpoPushToken[gone-batch-" + System.nanoTime() + "]";
+        deviceTokenRepository.save(new DeviceToken(userId, gone));
+        PushDelivery first = pushDeliveryRepository.save(pending("ExpoPushToken[b1]", Instant.now()));
+        PushDelivery second = pushDeliveryRepository.save(pending(gone, Instant.now()));
+        PushDelivery third = pushDeliveryRepository.save(pending("ExpoPushToken[b3]", Instant.now()));
+        SEND_DATA.set("[{\"status\":\"ok\",\"id\":\"t-1\"},"
+                + "{\"status\":\"error\",\"details\":{\"error\":\"DeviceNotRegistered\"}},"
+                + "{\"status\":\"ok\",\"id\":\"t-3\"}]");
+
+        expoPushService.sendDue();
+
+        assertThat(SEND_BODIES).singleElement().asString()
+                .contains("ExpoPushToken[b1]").contains(gone).contains("ExpoPushToken[b3]");
+        assertThat(pushDeliveryRepository.findById(first.getId()).orElseThrow().getTicketId()).isEqualTo("t-1");
+        assertThat(pushDeliveryRepository.findById(second.getId()).orElseThrow().getStatus()).isEqualTo(PushDeliveryStatus.FAILED);
+        assertThat(pushDeliveryRepository.findById(third.getId()).orElseThrow().getTicketId()).isEqualTo("t-3");
+        assertThat(deviceTokenRepository.findAllByUserId(userId)).extracting(DeviceToken::getToken).doesNotContain(gone);
+    }
+
+    @Test
+    @DisplayName("ticket 수가 요청 건수와 다르면 묶인 행을 모두 발송 대기로 되돌린다")
+    void ticketCountMismatchRetriesAll() {
+        PushDelivery first = pushDeliveryRepository.save(pending("ExpoPushToken[m1]", Instant.now()));
+        PushDelivery second = pushDeliveryRepository.save(pending("ExpoPushToken[m2]", Instant.now()));
+        SEND_DATA.set("[{\"status\":\"ok\",\"id\":\"t-only\"}]");
+
+        expoPushService.sendDue();
+
+        assertThat(pushDeliveryRepository.findAllById(List.of(first.getId(), second.getId()))).allSatisfy(d -> {
+            assertThat(d.getStatus()).isEqualTo(PushDeliveryStatus.PENDING);
+            assertThat(d.getTicketId()).isNull();
+            assertThat(d.getLastError()).isEqualTo("InvalidResponse");
+        });
     }
 
     @Test
@@ -356,13 +399,24 @@ class PushReceiptCheckIntegrationTest {
         try {
             HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
             server.createContext("/send", exchange -> {
-                SEND_BODIES.add(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+                String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+                SEND_BODIES.add(body);
                 if (SEND_STATUS.get() != 200) {
                     exchange.sendResponseHeaders(SEND_STATUS.get(), -1);
                     exchange.close();
                     return;
                 }
-                respond(exchange, SEND_RESPONSE.get());
+                if (SEND_DATA.get() != null) {
+                    respond(exchange, "{\"data\":" + SEND_DATA.get() + "}");
+                    return;
+                }
+                List<String> tickets = new ArrayList<>();
+                Matcher to = TO.matcher(body);
+                while (to.find()) {
+                    int i = tickets.size();
+                    tickets.add(i == 0 ? SEND_RESPONSE.get() : SEND_RESPONSE.get().replace("ticket-from-stub", "ticket-from-stub-" + i));
+                }
+                respond(exchange, "{\"data\":[" + String.join(",", tickets) + "]}");
             });
             server.createContext("/receipts", exchange -> {
                 if (RECEIPTS_DOWN.get()) {

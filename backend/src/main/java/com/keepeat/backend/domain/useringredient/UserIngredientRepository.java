@@ -4,7 +4,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 import java.util.Collection;
@@ -42,13 +41,13 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
             "WHERE ui.id = :id AND ui.userId = :userId")
     Optional<UserIngredient> findByIdAndUserId(@Param("id") Long id, @Param("userId") Long userId);
 
-    @Query(value = "SELECT DISTINCT ui.userId FROM UserIngredient ui JOIN AppUser u ON ui.userId = u.id " +
-            "WHERE ui.expiryDate BETWEEN :from AND :to AND u.deletedAt IS NULL ORDER BY ui.userId",
-            countQuery = "SELECT COUNT(DISTINCT ui.userId) FROM UserIngredient ui JOIN AppUser u ON ui.userId = u.id " +
-                    "WHERE ui.expiryDate BETWEEN :from AND :to AND u.deletedAt IS NULL")
-    Page<Long> findExpiringUserIds(
+    @Query("SELECT DISTINCT ui.userId FROM UserIngredient ui JOIN AppUser u ON ui.userId = u.id " +
+            "WHERE ui.expiryDate BETWEEN :from AND :to AND u.deletedAt IS NULL AND ui.userId > :afterUserId " +
+            "ORDER BY ui.userId")
+    List<Long> findExpiringUserIdsAfter(
             @Param("from") LocalDate from,
             @Param("to") LocalDate to,
+            @Param("afterUserId") Long afterUserId,
             Pageable pageable
     );
 

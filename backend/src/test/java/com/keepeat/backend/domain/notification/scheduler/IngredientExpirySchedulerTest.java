@@ -9,7 +9,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.data.domain.Page;
 import org.springframework.scheduling.TaskScheduler;
 
 import java.time.Instant;
@@ -46,21 +45,21 @@ class IngredientExpirySchedulerTest {
     @Test
     @DisplayName("배치는 시작과 완료를 기록한다")
     void batchRecordsStartAndCompletion() {
-        given(userIngredientRepository.findExpiringUserIds(any(), any(), any())).willReturn(Page.empty());
+        given(userIngredientRepository.findExpiringUserIdsAfter(any(), any(), any(), any())).willReturn(java.util.List.of());
 
         scheduler.checkExpiringIngredients();
 
         var order = inOrder(notificationBatchRunRepository, userIngredientRepository);
         order.verify(notificationBatchRunRepository).markStarted(eq(today), any(Instant.class));
-        order.verify(userIngredientRepository).findExpiringUserIds(any(), any(), any());
+        order.verify(userIngredientRepository).findExpiringUserIdsAfter(any(), any(), any(), any());
         order.verify(notificationBatchRunRepository).markCompleted(eq(today), any(Instant.class));
     }
 
     @Test
     @DisplayName("저장에 실패한 유저가 있으면 완료로 기록하지 않아 재기동 때 다시 실행된다")
     void batchWithFailedUsersStaysIncomplete() {
-        given(userIngredientRepository.findExpiringUserIds(any(), any(), any()))
-                .willReturn(new org.springframework.data.domain.PageImpl<>(java.util.List.of(1L)));
+        given(userIngredientRepository.findExpiringUserIdsAfter(any(), any(), any(), any()))
+                .willReturn(java.util.List.of(1L));
         com.keepeat.backend.domain.useringredient.UserIngredient item =
                 org.mockito.Mockito.mock(com.keepeat.backend.domain.useringredient.UserIngredient.class);
         given(item.getUserId()).willReturn(1L);
@@ -94,5 +93,21 @@ class IngredientExpirySchedulerTest {
         scheduler.resumeInterruptedRun();
 
         verify(taskScheduler, never()).schedule(any(Runnable.class), any(Instant.class));
+    }
+
+    @Test
+    @DisplayName("한 묶음이 가득 차면 마지막 userId 다음부터 이어서 가져오고 덜 차면 끝낸다")
+    void fullBatchContinuesFromLastUserId() {
+        java.util.List<Long> full = java.util.stream.LongStream.rangeClosed(1, 200).boxed().toList();
+        given(userIngredientRepository.findExpiringUserIdsAfter(any(), any(), eq(0L), any())).willReturn(full);
+        given(userIngredientRepository.findExpiringUserIdsAfter(any(), any(), eq(200L), any()))
+                .willReturn(java.util.List.of(201L));
+        given(userIngredientRepository.findExpiringByUserIds(any(), any(), any())).willReturn(java.util.List.of());
+
+        scheduler.checkExpiringIngredients();
+
+        verify(userIngredientRepository).findExpiringUserIdsAfter(any(), any(), eq(0L), any());
+        verify(userIngredientRepository).findExpiringUserIdsAfter(any(), any(), eq(200L), any());
+        verify(userIngredientRepository, org.mockito.Mockito.times(2)).findExpiringUserIdsAfter(any(), any(), any(), any());
     }
 }

@@ -19,6 +19,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -66,6 +70,23 @@ public class UserIngredientService {
 
     @Transactional
     public List<UserIngredientResponse> create(Long userId, List<UserIngredientCreateRequest> items) {
+        Map<Long, Ingredient> ingredients = ingredientRepository.findAllById(
+                items.stream().map(UserIngredientCreateRequest::ingredientId).filter(Objects::nonNull).distinct().toList()
+        ).stream().collect(Collectors.toMap(Ingredient::getId, Function.identity()));
+
+        List<Long> storageIngredientIds = items.stream()
+                .filter(item -> item.ingredientId() != null && item.expiryDate() == null)
+                .map(UserIngredientCreateRequest::ingredientId)
+                .distinct()
+                .toList();
+        Map<Long, Map<StorageType, IngredientStorage>> storages = storageIngredientIds.isEmpty()
+                ? Map.of()
+                : ingredientStorageRepository.findAllByIngredientIdIn(storageIngredientIds).stream()
+                        .collect(Collectors.groupingBy(
+                                storage -> storage.getIngredient().getId(),
+                                Collectors.toMap(IngredientStorage::getStorageType, Function.identity())
+                        ));
+
         List<UserIngredient> entities = items.stream().map(item -> {
             if (item.ingredientId() == null) {
                 return UserIngredient.builder()
@@ -80,17 +101,17 @@ public class UserIngredientService {
                         .build();
             }
 
-            Ingredient ingredient = ingredientRepository.findById(item.ingredientId())
-                    .orElseThrow(() -> new KeepEatException(ErrorCode.INGREDIENT_NOT_FOUND));
-
-            // PENDING 상태의 식재료는 식재료 등록 대상이 아님
-            if(ingredient.getStatus() != IngredientStatus.ACTIVE){
+            Ingredient ingredient = ingredients.get(item.ingredientId());
+            if (ingredient == null || ingredient.getStatus() != IngredientStatus.ACTIVE) {
                 throw new KeepEatException(ErrorCode.INGREDIENT_NOT_FOUND);
             }
 
             LocalDate expiryDate = item.expiryDate();
             if (expiryDate == null) {
-                expiryDate = calculateExpiryDate(ingredient.getId(), item.storageType(), item.purchaseDate());
+                expiryDate = calculateExpiryDate(
+                        storages.getOrDefault(ingredient.getId(), Map.of()).get(item.storageType()),
+                        item.purchaseDate()
+                );
             }
 
             return UserIngredient.builder()
@@ -128,11 +149,10 @@ public class UserIngredientService {
         userIngredientRepository.deleteAllByIdInAndUserId(ids, userId);
     }
 
-    private LocalDate calculateExpiryDate(Long ingredientId, StorageType storageType, LocalDate purchaseDate) {
-        IngredientStorage storage = ingredientStorageRepository
-                .findByIngredientIdAndStorageType(ingredientId, storageType)
-                .orElseThrow(() -> new KeepEatException(ErrorCode.INGREDIENT_STORAGE_NOT_FOUND));
-
+    private LocalDate calculateExpiryDate(IngredientStorage storage, LocalDate purchaseDate) {
+        if (storage == null) {
+            throw new KeepEatException(ErrorCode.INGREDIENT_STORAGE_NOT_FOUND);
+        }
         int totalDays = storage.getMax() * storage.getMetric().toDays();
         return purchaseDate.plusDays(totalDays);
     }

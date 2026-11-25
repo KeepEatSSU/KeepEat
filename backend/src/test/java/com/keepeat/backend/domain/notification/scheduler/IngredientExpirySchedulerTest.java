@@ -102,12 +102,24 @@ class IngredientExpirySchedulerTest {
         given(userIngredientRepository.findExpiringUserIdsAfter(any(), any(), eq(0L), any())).willReturn(full);
         given(userIngredientRepository.findExpiringUserIdsAfter(any(), any(), eq(200L), any()))
                 .willReturn(java.util.List.of(201L));
-        given(userIngredientRepository.findExpiringByUserIds(any(), any(), any())).willReturn(java.util.List.of());
+        given(userIngredientRepository.findExpiringByUserIds(any(), any(), any())).willAnswer(invocation -> {
+            java.util.Collection<Long> ids = invocation.getArgument(0);
+            return ids.stream().map(id -> com.keepeat.backend.domain.useringredient.UserIngredient.builder()
+                    .userId(id)
+                    .expiryDate(today.plusDays(1))
+                    .customName("우유")
+                    .build()).toList();
+        });
 
         scheduler.checkExpiringIngredients();
 
         verify(userIngredientRepository).findExpiringUserIdsAfter(any(), any(), eq(0L), any());
         verify(userIngredientRepository).findExpiringUserIdsAfter(any(), any(), eq(200L), any());
         verify(userIngredientRepository, org.mockito.Mockito.times(2)).findExpiringUserIdsAfter(any(), any(), any(), any());
+        verify(userIngredientRepository).findExpiringByUserIds(eq(full), any(), any());
+        verify(userIngredientRepository).findExpiringByUserIds(eq(java.util.List.of(201L)), any(), any());
+        for (long id = 1; id <= 201; id++) {
+            verify(notificationService).sendNotificationOnce(eq(id), any(), any(), any(), any(), any());
+        }
     }
 }

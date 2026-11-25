@@ -121,7 +121,12 @@ public class ExpoPushService {
             return;
         }
         for (int i = 0; i < rows.size(); i++) {
-            handleTicket(rows.get(i), tickets.get(i));
+            try {
+                handleTicket(rows.get(i), tickets.get(i));
+            } catch (Exception e) {
+                log.warn("Expo 푸시 ticket 처리 실패: token={}, cause={}",
+                        fingerprint(rows.get(i).getToken()), e.getClass().getSimpleName());
+            }
         }
     }
 

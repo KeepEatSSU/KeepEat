@@ -20,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -43,6 +44,7 @@ import java.util.stream.IntStream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 
 @SpringBootTest
 @ActiveProfiles("test")
@@ -68,7 +70,7 @@ class PushReceiptCheckIntegrationTest {
     @Autowired
     private PushDeliveryRepository pushDeliveryRepository;
 
-    @Autowired
+    @MockitoSpyBean
     private DeviceTokenRepository deviceTokenRepository;
 
     @Autowired
@@ -260,6 +262,24 @@ class PushReceiptCheckIntegrationTest {
         assertThat(pushDeliveryRepository.findById(second.getId()).orElseThrow().getStatus()).isEqualTo(PushDeliveryStatus.FAILED);
         assertThat(pushDeliveryRepository.findById(third.getId()).orElseThrow().getTicketId()).isEqualTo("t-3");
         assertThat(deviceTokenRepository.findAllByUserId(userId)).extracting(DeviceToken::getToken).doesNotContain(gone);
+    }
+
+    @Test
+    @DisplayName("한 행의 ticket 처리가 실패해도 같은 묶음의 나머지 행은 ticket을 저장한다")
+    void ticketHandlingFailureDoesNotStopOtherRows() {
+        String broken = "ExpoPushToken[broken-" + System.nanoTime() + "]";
+        PushDelivery first = pushDeliveryRepository.save(pending(broken, Instant.now()));
+        PushDelivery second = pushDeliveryRepository.save(pending("ExpoPushToken[after-broken]", Instant.now()));
+        SEND_DATA.set("[{\"status\":\"error\",\"details\":{\"error\":\"DeviceNotRegistered\"}},"
+                + "{\"status\":\"ok\",\"id\":\"t-after\"}]");
+        doThrow(new IllegalStateException("db down")).when(deviceTokenRepository).deleteByToken(broken);
+
+        expoPushService.sendDue();
+
+        assertThat(pushDeliveryRepository.findById(first.getId()).orElseThrow().getStatus()).isEqualTo(PushDeliveryStatus.PENDING);
+        PushDelivery after = pushDeliveryRepository.findById(second.getId()).orElseThrow();
+        assertThat(after.getStatus()).isEqualTo(PushDeliveryStatus.CHECKING);
+        assertThat(after.getTicketId()).isEqualTo("t-after");
     }
 
     @Test

@@ -34,7 +34,7 @@ import java.util.Map;
 @Service
 public class ExpoPushService {
 
-    private static final int SEND_BATCH_SIZE = 10;
+    private static final int SEND_BATCH_SIZE = 100;
     private static final Duration SEND_LEASE = Duration.ofMinutes(2);
     private static final Duration SEND_RETRY_BASE = Duration.ofSeconds(5);
     private static final Duration SEND_RETRY_MAX = Duration.ofMinutes(10);
@@ -77,38 +77,60 @@ public class ExpoPushService {
             due.forEach(row -> row.claimSend(leaseUntil));
             return due;
         });
-        rows.forEach(this::send);
+        send(rows);
         return !rows.isEmpty();
     }
 
-    void send(PushDelivery delivery) {
-        if (!delivery.getCreatedAt().plus(SEND_RETENTION).isAfter(Instant.now())) {
-            log.warn("Expo 푸시 재시도 기한 만료: token={}, error={}", fingerprint(delivery.getToken()), delivery.getLastError());
-            pushDeliveryRepository.failSend(delivery.getId(), delivery.getSendAttempts(),
-                    delivery.getLastError() == null ? "RetentionExpired" : delivery.getLastError());
-            return;
-        }
-        JsonNode ticket;
-        try {
-            ticket = post(expoPushUrl, buildPushBody(delivery)).path("data");
-        } catch (HttpClientErrorException e) {
-            if (e.getStatusCode().value() == 429) {
-                retryLater(delivery, "HTTP 429");
+    private void send(List<PushDelivery> claimed) {
+        Instant claimedAt = Instant.now();
+        List<PushDelivery> rows = new ArrayList<>();
+        for (PushDelivery delivery : claimed) {
+            if (delivery.getCreatedAt().plus(SEND_RETENTION).isAfter(claimedAt)) {
+                rows.add(delivery);
             } else {
-                log.warn("Expo 푸시 요청 거부: token={}, status={}", fingerprint(delivery.getToken()), e.getStatusCode().value());
-                pushDeliveryRepository.failSend(delivery.getId(), delivery.getSendAttempts(), "HTTP " + e.getStatusCode().value());
+                log.warn("Expo 푸시 재시도 기한 만료: token={}, error={}", fingerprint(delivery.getToken()), delivery.getLastError());
+                pushDeliveryRepository.failSend(delivery.getId(), delivery.getSendAttempts(),
+                        delivery.getLastError() == null ? "RetentionExpired" : delivery.getLastError());
             }
-            return;
-        } catch (Exception e) {
-            log.warn("Expo 푸시 요청 실패: token={}, attempts={}, cause={}",
-                    fingerprint(delivery.getToken()), delivery.getSendAttempts(), e.getClass().getSimpleName());
-            retryLater(delivery, e.getClass().getSimpleName());
+        }
+        if (rows.isEmpty()) {
             return;
         }
 
-        if (ticket.isArray() && !ticket.isEmpty()) {
-            ticket = ticket.get(0);
+        JsonNode tickets;
+        try {
+            tickets = post(expoPushUrl, rows.stream().map(this::buildPushBody).toList()).path("data");
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode().value() == 429) {
+                rows.forEach(delivery -> retryLater(delivery, "HTTP 429"));
+            } else {
+                log.warn("Expo 푸시 요청 거부: count={}, status={}", rows.size(), e.getStatusCode().value());
+                rows.forEach(delivery -> pushDeliveryRepository.failSend(
+                        delivery.getId(), delivery.getSendAttempts(), "HTTP " + e.getStatusCode().value()));
+            }
+            return;
+        } catch (Exception e) {
+            log.warn("Expo 푸시 요청 실패: count={}, cause={}", rows.size(), e.getClass().getSimpleName());
+            rows.forEach(delivery -> retryLater(delivery, e.getClass().getSimpleName()));
+            return;
         }
+
+        if (!tickets.isArray() || tickets.size() != rows.size()) {
+            log.warn("Expo 푸시 응답 ticket 수가 요청과 다름: count={}", rows.size());
+            rows.forEach(delivery -> retryLater(delivery, "InvalidResponse"));
+            return;
+        }
+        for (int i = 0; i < rows.size(); i++) {
+            try {
+                handleTicket(rows.get(i), tickets.get(i));
+            } catch (Exception e) {
+                log.warn("Expo 푸시 ticket 처리 실패: token={}, cause={}",
+                        fingerprint(rows.get(i).getToken()), e.getClass().getSimpleName());
+            }
+        }
+    }
+
+    private void handleTicket(PushDelivery delivery, JsonNode ticket) {
         String status = ticket.path("status").asText();
         String ticketId = ticket.path("id").asText(null);
         if ("ok".equals(status) && ticketId != null) {
@@ -233,7 +255,7 @@ public class ExpoPushService {
         return body;
     }
 
-    private JsonNode post(String url, Map<String, ?> body) {
+    private JsonNode post(String url, Object body) {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setAccept(List.of(MediaType.APPLICATION_JSON));

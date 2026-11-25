@@ -9,7 +9,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.TaskScheduler;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -55,18 +54,19 @@ public class IngredientExpiryScheduler {
         AtomicInteger failedUsers = new AtomicInteger();
         AtomicInteger itemCount = new AtomicInteger();
 
-        int pageNumber = 0;
-        Page<Long> userPage;
+        long afterUserId = 0L;
+        List<Long> userIds;
         do {
-            userPage = userIngredientRepository.findExpiringUserIds(
-                    today, targetDate, PageRequest.of(pageNumber++, USER_BATCH_SIZE)
+            userIds = userIngredientRepository.findExpiringUserIdsAfter(
+                    today, targetDate, afterUserId, PageRequest.of(0, USER_BATCH_SIZE)
             );
-            if (userPage.isEmpty()) {
-                continue;
+            if (userIds.isEmpty()) {
+                break;
             }
+            afterUserId = userIds.get(userIds.size() - 1);
 
             List<UserIngredient> items = userIngredientRepository.findExpiringByUserIds(
-                    userPage.getContent(), today, targetDate
+                    userIds, today, targetDate
             );
             itemCount.addAndGet(items.size());
             Map<Long, List<UserIngredient>> grouped = items.stream()
@@ -75,7 +75,7 @@ public class IngredientExpiryScheduler {
             grouped.forEach((userId, userItems) -> sendForUser(
                     today, userId, userItems, sentUsers, skippedUsers, failedUsers
             ));
-        } while (userPage.hasNext());
+        } while (userIds.size() == USER_BATCH_SIZE);
         if (failedUsers.get() == 0) {
             notificationBatchRunRepository.markCompleted(today, Instant.now());
         }

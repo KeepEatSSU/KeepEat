@@ -33,10 +33,12 @@ class BulkDeleteQueryCountIntegrationTest {
     void bulkDeletesRunOneStatement() {
         long userId = 987_654_321L;
         Instant now = Instant.now();
+        long otherUserId = userId + 1;
         for (int i = 0; i < 3; i++) {
             userSessionRepository.save(UserSession.create(userId, "hash-" + i, now.plus(Duration.ofDays(1))));
-            userSessionRepository.save(UserSession.create(userId + 1, "expired-" + i, now.minus(Duration.ofDays(1))));
+            userSessionRepository.save(UserSession.create(otherUserId, "expired-" + i, now.minus(Duration.ofDays(1))));
         }
+        userSessionRepository.save(UserSession.create(otherUserId, "active", now.plus(Duration.ofDays(1))));
         entityManager.flush();
         entityManager.clear();
         Statistics statistics = entityManager.getEntityManagerFactory().unwrap(SessionFactory.class).getStatistics();
@@ -45,6 +47,8 @@ class BulkDeleteQueryCountIntegrationTest {
         statistics.clear();
         userSessionRepository.deleteAllByUserId(userId);
         long byUser = statistics.getPrepareStatementCount();
+        assertThat(userSessionRepository.findAll()).filteredOn(s -> s.getUserId().equals(userId)).isEmpty();
+        assertThat(userSessionRepository.findAll()).filteredOn(s -> s.getUserId().equals(otherUserId)).hasSize(4);
 
         statistics.clear();
         userSessionRepository.deleteAllByExpiresAtBefore(now);
@@ -53,6 +57,9 @@ class BulkDeleteQueryCountIntegrationTest {
 
         assertThat(byUser).isEqualTo(1);
         assertThat(expired).isEqualTo(1);
-        assertThat(userSessionRepository.findAll()).noneMatch(s -> s.getUserId().equals(userId) || s.getUserId().equals(userId + 1));
+        assertThat(userSessionRepository.findAll())
+                .filteredOn(s -> s.getUserId().equals(userId) || s.getUserId().equals(otherUserId))
+                .singleElement()
+                .satisfies(s -> assertThat(s.getUserId()).isEqualTo(otherUserId));
     }
 }

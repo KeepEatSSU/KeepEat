@@ -17,7 +17,6 @@ import com.keepeat.backend.domain.recipe.repository.UserRecipeRepository;
 import com.keepeat.backend.domain.user.entity.AppUser;
 import com.keepeat.backend.domain.user.repository.AppUserRepository;
 
-import com.keepeat.backend.domain.useringredient.UserIngredient;
 import com.keepeat.backend.domain.useringredient.UserIngredientRepository;
 
 import lombok.RequiredArgsConstructor;
@@ -201,12 +200,12 @@ public class RecipeService {
                 ? new ArrayList<>()
                 : Arrays.asList(recipe.getInstructions().split("\n"));
 
-        List<UserIngredient> userIngredients = userIngredientRepository.findAllByUserIdOrderByExpiryDate(userId);
-
-        Set<Long> userIngredientSet = userIngredients.stream()
-                .filter(ui -> ui.getIngredient() != null)
-                .map(ingredient -> ingredient.getIngredient().getId())
-                .collect(Collectors.toSet());
+        List<Long> recipeIngredientIds = recipe.getRequiredIngredients().stream()
+                .map(ri -> ri.getIngredient().getId())
+                .toList();
+        Set<Long> userIngredientSet = recipeIngredientIds.isEmpty()
+                ? Set.of()
+                : new HashSet<>(userIngredientRepository.findOwnedIngredientIds(userId, recipeIngredientIds));
 
         List<RecipeIngredientDetailDto> recipeIngredientList = new ArrayList<>();
 

@@ -318,6 +318,37 @@ class UserIngredientRecipeFlowIntegrationTest {
     }
 
     @Test
+    @DisplayName("레시피 상세 — 내가 가진 레시피 재료만 isOwned=true, 다른 사용자 보유분과 커스텀 식재료는 반영하지 않는다")
+    void recipeDetail_isOwnedReflectsOnlyMyRecipeIngredients() throws Exception {
+        String user1Body = """
+                {"items":[
+                    {"ingredientId":%d,"storageType":"냉장","purchaseDate":"2026-05-22","quantity":300,"unit":"g"},
+                    {"ingredientId":%d,"storageType":"냉장","purchaseDate":"2026-05-22","quantity":300,"unit":"g"},
+                    {"ingredientId":%d,"storageType":"냉장","purchaseDate":"2026-05-22","quantity":1,"unit":"개"},
+                    {"ingredientId":null,"customName":"양파","storageType":"냉장","purchaseDate":"2026-05-22","expiryDate":"2026-06-30","quantity":1,"unit":"개"}
+                ]}
+                """.formatted(porkId, porkId, beefId);
+        String user2Body = """
+                {"items":[
+                    {"ingredientId":%d,"storageType":"냉장","purchaseDate":"2026-05-22","quantity":1,"unit":"개"}
+                ]}
+                """.formatted(onionId);
+        mockMvc.perform(post("/api/v1/user-ingredients").with(auth(user1Id))
+                        .contentType(MediaType.APPLICATION_JSON).content(user1Body))
+                .andExpect(status().isCreated());
+        mockMvc.perform(post("/api/v1/user-ingredients").with(auth(user2Id))
+                        .contentType(MediaType.APPLICATION_JSON).content(user2Body))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/api/v1/recipes/detail/{recipeId}", recipeId).with(auth(user1Id)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.requiredIngredients.length()").value(3))
+                .andExpect(jsonPath("$.requiredIngredients[?(@.name == '삼겹살')].isOwned").value(true))
+                .andExpect(jsonPath("$.requiredIngredients[?(@.name == '양파')].isOwned").value(false))
+                .andExpect(jsonPath("$.requiredIngredients[?(@.name == '소금')].isOwned").value(false));
+    }
+
+    @Test
     @DisplayName("시나리오 D — 레시피별 조회: 존재하지 않는 recipeId → 404")
     void findByRecipe_recipeNotFound_404() throws Exception {
         mockMvc.perform(get("/api/v1/user-ingredients/by-recipe/999999")

@@ -73,6 +73,11 @@ public interface UserIngredientRepository extends JpaRepository<UserIngredient, 
     List<UserIngredient> findAllByUserIdAndRecipeId(@Param("userId") Long userId,
                                                     @Param("recipeId") Long recipeId);
 
+    @Query("SELECT DISTINCT ui.ingredient.id FROM UserIngredient ui " +
+            "WHERE ui.userId = :userId AND ui.ingredient.id IN :ingredientIds")
+    List<Long> findOwnedIngredientIds(@Param("userId") Long userId,
+                                      @Param("ingredientIds") Collection<Long> ingredientIds);
+
     long countByIdInAndUserId(Collection<Long> ids, Long userId);
 
     @Modifying

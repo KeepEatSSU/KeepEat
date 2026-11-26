@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.user.repository;
 
+import org.springframework.data.jpa.repository.Modifying;
 import com.keepeat.backend.domain.user.entity.EmailAuth;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -16,5 +17,7 @@ public interface EmailAuthRepository extends JpaRepository<EmailAuth, Long> {
     @Query("SELECT e FROM EmailAuth e WHERE e.email = :email")
     Optional<EmailAuth> findWithLockByEmail(@Param("email") String email);
 
-    void deleteAllByExpiredAtBefore(LocalDateTime now);
+    @Modifying
+    @Query("DELETE FROM EmailAuth e WHERE e.expiredAt < :now")
+    void deleteAllByExpiredAtBefore(@Param("now") LocalDateTime now);
 }

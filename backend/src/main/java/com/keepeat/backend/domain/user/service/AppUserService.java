@@ -256,7 +256,6 @@ public class AppUserService {
 
         emailService.consumePasswordResetCode(email, code);
         passwordResetTokenRepository.deleteAllByUserId(user.getId());
-        passwordResetTokenRepository.deleteAllByExpiresAtBefore(LocalDateTime.now());
 
         String rawToken = generateOpaqueCode();
         passwordResetTokenRepository.save(PasswordResetToken.issue(
@@ -307,7 +306,6 @@ public class AppUserService {
     public String issueOAuthLoginCode(Long userId) {
         AppUser user = findActiveUser(userId);
         LocalDateTime now = LocalDateTime.now();
-        oauthLoginCodeRepository.deleteAllByExpiresAtBefore(now);
 
         String code = generateOpaqueCode();
         oauthLoginCodeRepository.save(OAuthLoginCode.issue(

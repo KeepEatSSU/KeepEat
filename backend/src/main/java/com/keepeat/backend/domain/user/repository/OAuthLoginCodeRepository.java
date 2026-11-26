@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.user.repository;
 
+import org.springframework.data.jpa.repository.Modifying;
 import com.keepeat.backend.domain.user.entity.OAuthLoginCode;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -15,7 +16,11 @@ public interface OAuthLoginCodeRepository extends JpaRepository<OAuthLoginCode, 
     @Query("SELECT c FROM OAuthLoginCode c WHERE c.codeHash = :codeHash")
     Optional<OAuthLoginCode> findByCodeHashForUpdate(@Param("codeHash") String codeHash);
 
-    void deleteAllByExpiresAtBefore(LocalDateTime expiresAt);
+    @Modifying
+    @Query("DELETE FROM OAuthLoginCode c WHERE c.expiresAt < :expiresAt")
+    void deleteAllByExpiresAtBefore(@Param("expiresAt") LocalDateTime expiresAt);
 
-    void deleteAllByUserId(Long userId);
+    @Modifying
+    @Query("DELETE FROM OAuthLoginCode c WHERE c.userId = :userId")
+    void deleteAllByUserId(@Param("userId") Long userId);
 }

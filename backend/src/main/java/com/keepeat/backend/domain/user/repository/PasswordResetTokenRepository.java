@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.user.repository;
 
+import org.springframework.data.jpa.repository.Modifying;
 import com.keepeat.backend.domain.user.entity.PasswordResetToken;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -15,7 +16,11 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
     @Query("SELECT t FROM PasswordResetToken t WHERE t.tokenHash = :tokenHash")
     Optional<PasswordResetToken> findByTokenHashForUpdate(@Param("tokenHash") String tokenHash);
 
-    void deleteAllByUserId(Long userId);
+    @Modifying
+    @Query("DELETE FROM PasswordResetToken t WHERE t.userId = :userId")
+    void deleteAllByUserId(@Param("userId") Long userId);
 
-    void deleteAllByExpiresAtBefore(LocalDateTime now);
+    @Modifying
+    @Query("DELETE FROM PasswordResetToken t WHERE t.expiresAt < :now")
+    void deleteAllByExpiresAtBefore(@Param("now") LocalDateTime now);
 }

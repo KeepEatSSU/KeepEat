@@ -148,11 +148,12 @@ public class UserIngredientService {
 
     @Transactional
     public void deleteMany(Long userId, List<Long> ids) {
-        long matched = userIngredientRepository.countByIdInAndUserId(ids, userId);
-        if (matched != ids.size()) {
+        List<Long> distinctIds = ids.stream().distinct().toList();
+        long matched = userIngredientRepository.countByIdInAndUserId(distinctIds, userId);
+        if (matched != distinctIds.size()) {
             throw new KeepEatException(ErrorCode.USER_INGREDIENT_NOT_FOUND);
         }
-        userIngredientRepository.deleteAllByIdInAndUserId(ids, userId);
+        userIngredientRepository.deleteAllByIdInAndUserId(distinctIds, userId);
     }
 
     private LocalDate calculateExpiryDate(IngredientStorage storage, LocalDate purchaseDate) {

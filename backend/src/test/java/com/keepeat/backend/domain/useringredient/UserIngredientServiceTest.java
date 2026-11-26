@@ -344,6 +344,17 @@ class UserIngredientServiceTest {
     }
 
     @Test
+    @DisplayName("deleteMany — 같은 id가 중복으로 들어와도 본인 소유면 정상 삭제")
+    void deleteMany_duplicateIds_success() {
+        List<Long> distinct = List.of(100L, 101L);
+        given(userIngredientRepository.countByIdInAndUserId(distinct, USER_ID)).willReturn(2L);
+
+        userIngredientService.deleteMany(USER_ID, List.of(100L, 101L, 100L));
+
+        verify(userIngredientRepository).deleteAllByIdInAndUserId(distinct, USER_ID);
+    }
+
+    @Test
     @DisplayName("deleteMany — 타인 소유 또는 존재하지 않는 id 포함 시 USER_INGREDIENT_NOT_FOUND, 삭제 호출 0회")
     void deleteMany_someNotOwned_throwsAndNoDelete() {
         List<Long> ids = List.of(100L, 200L);

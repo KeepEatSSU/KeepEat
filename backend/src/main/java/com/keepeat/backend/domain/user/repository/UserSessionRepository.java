@@ -1,5 +1,6 @@
 package com.keepeat.backend.domain.user.repository;
 
+import org.springframework.data.jpa.repository.Modifying;
 import com.keepeat.backend.domain.user.entity.UserSession;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -19,7 +20,11 @@ public interface UserSessionRepository extends JpaRepository<UserSession, String
 
     void deleteByIdAndUserId(String id, Long userId);
 
-    void deleteAllByUserId(Long userId);
+    @Modifying
+    @Query("DELETE FROM UserSession s WHERE s.userId = :userId")
+    void deleteAllByUserId(@Param("userId") Long userId);
 
-    void deleteAllByExpiresAtBefore(Instant now);
+    @Modifying
+    @Query("DELETE FROM UserSession s WHERE s.expiresAt < :now")
+    void deleteAllByExpiresAtBefore(@Param("now") Instant now);
 }

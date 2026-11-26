@@ -80,5 +80,7 @@ public interface PushDeliveryRepository extends JpaRepository<PushDelivery, Long
     int deleteCreatedBefore(@Param("cutoff") Instant cutoff);
 
     @Transactional
-    void deleteAllByUserId(Long userId);
+    @Modifying
+    @Query("DELETE FROM PushDelivery d WHERE d.userId = :userId")
+    void deleteAllByUserId(@Param("userId") Long userId);
 }

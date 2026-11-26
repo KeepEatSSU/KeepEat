@@ -40,7 +40,9 @@ public interface DeviceTokenRepository extends JpaRepository<DeviceToken, Long> 
 
     // 회원 탈퇴 시 해당 유저의 모든 푸시 토큰 즉시 정리 (탈퇴 후 푸시 송신 차단)
     @Transactional
-    void deleteAllByUserId(Long userId);
+    @Modifying
+    @Query("DELETE FROM DeviceToken d WHERE d.userId = :userId")
+    void deleteAllByUserId(@Param("userId") Long userId);
 
     @Transactional
     void deleteAllBySessionId(String sessionId);
